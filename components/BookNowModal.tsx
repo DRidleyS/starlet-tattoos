@@ -28,8 +28,11 @@ export default function BookNowModal({
       role="dialog"
     >
       <div className="fixed inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-lg shadow-lg max-w-xl w-full mx-4 p-6 z-10">
-        <h3 className="text-lg font-semibold mb-3">Book Now — Intake</h3>
+      <div className="relative bg-white bn-modal max-w-xl w-full mx-4 z-10">
+        <button aria-label="Close" className="bn-modal-close" onClick={onClose}>
+          ✕
+        </button>
+        <h3 className="bn-title">Book Now — Intake</h3>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -74,70 +77,182 @@ export default function BookNowModal({
             onClose();
           }}
         >
-          <div className="grid grid-cols-1 gap-3">
-            <label className="flex flex-col">
-              <span className="text-sm text-gray-700">Full name</span>
-              <input name="name" required className="mt-1 p-2 border rounded" />
+          <div className="bn-grid">
+            <label className="bn-field">
+              <span className="bn-label">Full name</span>
+              <input name="name" required className="bn-input" />
             </label>
-            <label className="flex flex-col">
-              <span className="text-sm text-gray-700">Email</span>
-              <input
-                name="email"
-                type="email"
-                required
-                className="mt-1 p-2 border rounded"
-              />
+            <label className="bn-field">
+              <span className="bn-label">Email</span>
+              <input name="email" type="email" required className="bn-input" />
             </label>
-            <label className="flex flex-col">
-              <span className="text-sm text-gray-700">Phone</span>
-              <input
-                name="phone"
-                type="tel"
-                className="mt-1 p-2 border rounded"
-              />
+            <label className="bn-field">
+              <span className="bn-label">Phone</span>
+              <input name="phone" type="tel" className="bn-input" />
             </label>
-            <label className="flex flex-col">
-              <span className="text-sm text-gray-700">Preferred date</span>
-              <input
-                name="date"
-                type="date"
-                className="mt-1 p-2 border rounded"
-              />
+            <label className="bn-field">
+              <span className="bn-label">Preferred date</span>
+              <input name="date" type="date" className="bn-input" />
             </label>
-            <label className="flex flex-col">
-              <span className="text-sm text-gray-700">
-                Tattoo description / placement
-              </span>
-              <textarea
-                name="desc"
-                rows={4}
-                className="mt-1 p-2 border rounded"
-              />
+            <label className="bn-field">
+              <span className="bn-label">Tattoo description / placement</span>
+              <textarea name="desc" rows={4} className="bn-input bn-textarea" />
             </label>
-            <label className="flex items-center gap-2 mt-2">
-              <input type="checkbox" name="consent" />
-              <span className="text-sm text-gray-600">
+            <label className="bn-consent">
+              <input type="checkbox" name="consent" className="bn-checkbox" />
+              <span className="bn-consent-txt">
                 I agree to be contacted about this booking.
               </span>
             </label>
-            <div className="flex gap-3 justify-end mt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded border"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded bg-rose-600 text-white"
-              >
+            <div className="bn-actions">
+              <button type="submit" className="bn-btn bn-submit">
                 Submit intake
               </button>
             </div>
           </div>
         </form>
       </div>
+
+      <style jsx>{`
+        .bn-modal {
+          background: #fff;
+          border: 1px solid #111;
+          border-radius: 8px;
+          padding: 28px;
+          box-shadow: none;
+        }
+        .bn-title {
+          font-size: 18px;
+          font-weight: 600;
+          color: #0b0b0b;
+          margin: 0 0 12px 0;
+        }
+        .bn-grid {
+          display: grid;
+          gap: 12px;
+        }
+        .bn-field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .bn-label {
+          font-size: 13px;
+          color: #111;
+        }
+        .bn-input {
+          padding: 10px 12px;
+          border: 1px solid #111;
+          border-radius: 6px;
+          background: transparent;
+          color: #000;
+          font-size: 15px;
+        }
+        .bn-textarea {
+          min-height: 110px;
+          resize: vertical;
+        }
+        .bn-consent {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-top: 6px;
+        }
+        .bn-checkbox {
+          width: 16px;
+          height: 16px;
+          border: 1px solid #111;
+        }
+        .bn-consent-txt {
+          font-size: 13px;
+          color: #111;
+        }
+        .bn-actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          margin-top: 8px;
+        }
+        .bn-btn {
+          padding: 10px 14px;
+          border-radius: 6px;
+          font-size: 15px;
+          cursor: pointer;
+          border: 1px solid #111;
+          background: transparent;
+          color: #111;
+          transition:
+            transform 140ms ease,
+            box-shadow 160ms ease,
+            background 160ms ease,
+            color 160ms ease;
+        }
+        .bn-submit {
+          background: linear-gradient(
+            135deg,
+            #f8e6e8,
+            #f0c3c7 35%,
+            #b76e79 65%,
+            #f6d3d6
+          );
+          color: #fff;
+          border-color: rgba(255, 255, 255, 0.06);
+          box-shadow: 0 8px 28px rgba(183, 110, 121, 0.28);
+          font-size: 18px;
+          padding-left: 20px;
+          padding-right: 20px;
+        }
+        .bn-submit:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+        }
+        .bn-submit:active {
+          transform: translateY(0);
+        }
+        .bn-submit:focus {
+          outline: 3px solid rgba(255, 255, 255, 0.06);
+          outline-offset: 2px;
+        }
+        .bn-cancel {
+          background: transparent;
+        }
+        .bn-modal-close {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          border: none;
+          background: transparent;
+          font-size: 18px;
+          line-height: 1;
+          padding: 6px 8px;
+          cursor: pointer;
+          color: #111;
+          border-radius: 6px;
+        }
+        .bn-modal-close:hover {
+          background: rgba(0, 0, 0, 0.04);
+        }
+        .bn-modal-close:focus {
+          outline: 2px solid rgba(0, 0, 0, 0.08);
+        }
+
+        @media (max-width: 640px) {
+          .bn-modal {
+            padding: 20px;
+            margin: 12px;
+          }
+          .bn-actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .bn-submit {
+            width: 100%;
+          }
+          .bn-cancel {
+            align-self: flex-end;
+          }
+        }
+      `}</style>
     </div>
   );
 }
