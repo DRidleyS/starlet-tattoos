@@ -18,7 +18,7 @@ export default function Home() {
             width={320}
             height={120}
             priority
-            className="mb-6"
+            className="mb-6 mt-6 sm:mt-12"
           />
           <h1 className="text-4xl font-serif text-ink text-center mb-2">
             Starlet Tattoos
