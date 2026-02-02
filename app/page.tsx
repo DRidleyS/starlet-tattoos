@@ -76,6 +76,11 @@ export default function Home() {
   const [ageGateOpen, setAgeGateOpen] = useState(false);
   const [ageDenied, setAgeDenied] = useState(false);
 
+  // VineTopFrame renders an absolute SVG with height=120px.
+  // iOS Safari + safe-area can shrink the available top padding, so we reserve
+  // a hard "no-go" zone above the hero content to prevent overlap.
+  const TOP_VINE_GUARD_PX = 148;
+
   useEffect(() => {
     try {
       const ok = localStorage.getItem(AGE_GATE_KEY);
@@ -158,7 +163,12 @@ export default function Home() {
           <VineTopFrame />
 
           {/* Hero content biased lower (closer to the divider) */}
-          <div className="flex-1 flex flex-col items-center justify-end px-4 pt-24 sm:pt-28 pb-8 sm:pb-10 gap-6 sm:gap-7">
+          <div
+            className="flex-1 flex flex-col items-center justify-end px-4 pt-0 pb-8 sm:pb-10 gap-6 sm:gap-7"
+            style={{
+              paddingTop: `calc(env(safe-area-inset-top) + ${TOP_VINE_GUARD_PX}px)`,
+            }}
+          >
             <Image
               src="/starletlogo.jpg"
               alt="Starlet Tattoos Logo"
