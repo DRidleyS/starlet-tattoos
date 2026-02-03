@@ -79,7 +79,7 @@ export default function Home() {
   // VineTopFrame renders an absolute SVG with height=120px.
   // iOS Safari + safe-area can shrink the available top padding, so we reserve
   // a hard "no-go" zone above the hero content to prevent overlap.
-  const TOP_VINE_GUARD_PX = 108;
+  const TOP_VINE_GUARD_PX = 86;
 
   useEffect(() => {
     try {
