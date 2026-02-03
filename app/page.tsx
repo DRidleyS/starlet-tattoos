@@ -182,7 +182,7 @@ export default function Home() {
             <div className="flex gap-4">
               <BookNowLauncher />
             </div>
-            <p className="text-lg text-ink text-center max-w-xl mt-6">
+            <p className="text-lg text-ink text-center max-w-xl py-6">
               Fine line and custom tattoo studio.
             </p>
           </div>
