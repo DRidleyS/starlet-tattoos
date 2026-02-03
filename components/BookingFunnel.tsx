@@ -101,8 +101,9 @@ type FunnelData = {
   fullName: string;
   email: string;
   phone: string;
-  preferredDate: string;
   tattooDescription: string;
+
+  referencePhotos: File[];
 
   dob: string;
   photoId: File | null;
@@ -114,6 +115,9 @@ type FunnelData = {
 };
 
 const STORAGE_KEY = "starlet_booking_funnel_v1";
+
+const MAX_REFERENCE_PHOTOS = 3;
+const MAX_REFERENCE_PHOTO_BYTES = 1_800_000; // ~1.8MB each
 
 const CONSENT_ITEMS: Array<{ key: string; text: string }> = [
   {
@@ -599,13 +603,6 @@ async function buildConsentPdf(data: FunnelData) {
       font: helv,
       color: rgb(0, 0, 0),
     });
-    page.drawText(`Preferred date: ${safe(data.preferredDate)}`, {
-      x: 50,
-      y: 628,
-      size: 11,
-      font: helv,
-      color: rgb(0, 0, 0),
-    });
 
     // Consent checklist summary
     try {
@@ -715,8 +712,8 @@ export default function BookingFunnel() {
     fullName: "",
     email: "",
     phone: "",
-    preferredDate: "",
     tattooDescription: "",
+    referencePhotos: [],
     dob: "",
     photoId: null,
     initialsPngDataUrl: null,
@@ -736,6 +733,7 @@ export default function BookingFunnel() {
         ...prev,
         ...parsed,
         photoId: null, // can't restore files
+        referencePhotos: [], // can't restore files
       }));
     } catch {
       // ignore
@@ -745,7 +743,7 @@ export default function BookingFunnel() {
   // persist (minus the file)
   useEffect(() => {
     try {
-      const { photoId: _file, ...serializable } = data;
+      const { photoId: _file, referencePhotos: _refs, ...serializable } = data;
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
     } catch {
       // ignore
@@ -778,14 +776,14 @@ export default function BookingFunnel() {
         canNext: digitsOnly(data.phone).length === 10,
       },
       {
-        id: "preferredDate",
-        title: "Preferred appointment date",
-        canNext: Boolean(data.preferredDate),
-      },
-      {
         id: "tattooDescription",
         title: "Tell us about your tattoo",
         canNext: data.tattooDescription.trim().length >= 10,
+      },
+      {
+        id: "referencePhotos",
+        title: "Add reference photos (optional)",
+        canNext: true,
       },
       { id: "dob", title: "Date of birth", canNext: Boolean(data.dob) },
       {
@@ -858,8 +856,8 @@ export default function BookingFunnel() {
         fullName: data.fullName,
         email: data.email,
         phone: data.phone,
-        preferredDate: data.preferredDate,
         tattooDescription: data.tattooDescription,
+        referencePhotos_count: String(data.referencePhotos.length),
         dob: data.dob,
         photoId_name: data.photoId?.name || "",
         consentDate: data.consentDate,
@@ -876,6 +874,22 @@ export default function BookingFunnel() {
         }
         payload.photo_id = await readFileAsDataUrl(data.photoId);
         payload.photo_id_name = data.photoId.name;
+      }
+
+      // Attach up to 3 reference photos.
+      // EmailJS template must define Variable Attachments with parameter names:
+      // `reference_1`, `reference_2`, `reference_3`.
+      const refs = (data.referencePhotos || []).slice(0, MAX_REFERENCE_PHOTOS);
+      for (let i = 0; i < refs.length; i++) {
+        const f = refs[i];
+        if (f.size > MAX_REFERENCE_PHOTO_BYTES) {
+          throw new Error(
+            `Reference photo ${i + 1} is too large. Please upload images under ~2MB each.`,
+          );
+        }
+        const dataUrl = await readFileAsDataUrl(f);
+        payload[`reference_${i + 1}`] = dataUrl;
+        payload[`reference_${i + 1}_name`] = f.name;
       }
 
       const pdf = await buildConsentPdf(data);
@@ -913,8 +927,8 @@ export default function BookingFunnel() {
         fullName: "",
         email: "",
         phone: "",
-        preferredDate: "",
         tattooDescription: "",
+        referencePhotos: [],
         dob: "",
         photoId: null,
         initialsPngDataUrl: null,
@@ -1095,12 +1109,14 @@ export default function BookingFunnel() {
         return "We’ll only use this to reply about your booking.";
       case "tattooDescription":
         return "Placement, size, style, and any reference notes.";
+      case "referencePhotos":
+        return "Add up to 3 images that show the style/placement you want.";
       case "photoId":
-        return "Upload an image or PDF of your ID.";
+        return "Upload an image of your ID.";
       case "consentInitials":
-        return "Draw initials and tap Save to continue.";
+        return "Draw initials and tap Next to save.";
       case "signature":
-        return "Draw signature and tap Save to continue.";
+        return "Draw signature and tap Next to save.";
       default:
         return "";
     }
@@ -1108,6 +1124,29 @@ export default function BookingFunnel() {
 
   const hint = hintForStep(current.id);
   const filePickerRef = useRef<HTMLInputElement | null>(null);
+  const referencePickerRef = useRef<HTMLInputElement | null>(null);
+
+  const addReferenceFiles = (files: FileList | null) => {
+    const incoming = files ? Array.from(files) : [];
+    if (!incoming.length) return;
+
+    const tooBig = incoming.find((f) => f.size > MAX_REFERENCE_PHOTO_BYTES);
+    if (tooBig) {
+      setStepError(
+        "One of those images is too large. Please upload images under ~2MB each.",
+      );
+      return;
+    }
+
+    setData((d) => {
+      const next = [...(d.referencePhotos || []), ...incoming].slice(
+        0,
+        MAX_REFERENCE_PHOTOS,
+      );
+      return { ...d, referencePhotos: next };
+    });
+    setStepError(null);
+  };
 
   return (
     <div
@@ -1198,21 +1237,6 @@ export default function BookingFunnel() {
                     />
                   )}
 
-                  {current.id === "preferredDate" && (
-                    <input
-                      autoFocus
-                      value={data.preferredDate}
-                      onChange={(e) =>
-                        setData((d) => ({
-                          ...d,
-                          preferredDate: e.target.value,
-                        }))
-                      }
-                      className="w-full bg-transparent outline-none text-xl md:text-2xl"
-                      type="date"
-                    />
-                  )}
-
                   {current.id === "tattooDescription" && (
                     <textarea
                       autoFocus
@@ -1262,6 +1286,75 @@ export default function BookingFunnel() {
                           ? `Selected: ${data.photoId.name}`
                           : "Tap to choose a file"}
                       </BouncyButton>
+                    </>
+                  )}
+
+                  {current.id === "referencePhotos" && (
+                    <>
+                      <input
+                        ref={referencePickerRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          addReferenceFiles(e.target.files);
+                          if (referencePickerRef.current)
+                            referencePickerRef.current.value = "";
+                        }}
+                      />
+                      <div className="grid gap-3">
+                        <BouncyButton
+                          type="button"
+                          className="w-full text-left text-xl md:text-2xl text-black/80"
+                          onClick={() => referencePickerRef.current?.click()}
+                        >
+                          {data.referencePhotos?.length
+                            ? `Selected: ${data.referencePhotos.length} image${
+                                data.referencePhotos.length === 1 ? "" : "s"
+                              }`
+                            : "Tap to add reference images"}
+                        </BouncyButton>
+
+                        {stepError ? (
+                          <div className="text-sm text-red-700">
+                            {stepError}
+                          </div>
+                        ) : null}
+
+                        {data.referencePhotos?.length ? (
+                          <div className="grid gap-2">
+                            {data.referencePhotos.map((f, idx) => (
+                              <div
+                                key={`${f.name}-${idx}`}
+                                className="flex items-center justify-between gap-3 rounded-full border border-black/10 bg-white px-4 py-2"
+                              >
+                                <div className="text-sm text-black/80 truncate">
+                                  {f.name}
+                                </div>
+                                <BouncyButton
+                                  type="button"
+                                  className="px-4 py-2 rounded-full border border-black/15 text-xs hover:bg-black/5"
+                                  onClick={() =>
+                                    setData((d) => ({
+                                      ...d,
+                                      referencePhotos: d.referencePhotos.filter(
+                                        (_, i) => i !== idx,
+                                      ),
+                                    }))
+                                  }
+                                >
+                                  Remove
+                                </BouncyButton>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="text-xs text-black/45">
+                          Up to {MAX_REFERENCE_PHOTOS} images.
+                        </div>
+                      </div>
                     </>
                   )}
 
@@ -1372,7 +1465,14 @@ export default function BookingFunnel() {
                     ["Name", data.fullName],
                     ["Email", data.email],
                     ["Phone", data.phone || "(not provided)"],
-                    ["Preferred date", data.preferredDate],
+                    [
+                      "Reference photos",
+                      data.referencePhotos?.length
+                        ? `${data.referencePhotos.length} image${
+                            data.referencePhotos.length === 1 ? "" : "s"
+                          }`
+                        : "(none)",
+                    ],
                     ["DOB", data.dob],
                     ["Photo ID", data.photoId?.name || "(not selected)"],
                   ] as const

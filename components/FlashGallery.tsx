@@ -6,11 +6,11 @@ import Image from "next/image";
 type Item = { paper: string };
 
 export default function FlashGallery({ items }: { items: Item[] }) {
-  // Cork-like background using layered gradients for texture
-  const corkBackground = {
-    backgroundColor: "#b97f3a",
+  // Soft accent-pink background using layered gradients for texture
+  const accentBackground = {
+    backgroundColor: "#f7e7ea",
     backgroundImage:
-      "radial-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), repeating-linear-gradient(45deg, rgba(0,0,0,0.02) 0 6px, transparent 6px 12px), linear-gradient(180deg, rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
+      "radial-gradient(rgba(183,110,121,0.14) 1px, transparent 1px), repeating-linear-gradient(45deg, rgba(183,110,121,0.06) 0 6px, transparent 6px 12px), linear-gradient(180deg, rgba(0,0,0,0.02), rgba(255,255,255,0.28))",
     backgroundSize: "6px 6px, 28px 28px, 100% 100%",
     backgroundBlendMode: "overlay, normal, normal",
   } as React.CSSProperties;
@@ -19,7 +19,7 @@ export default function FlashGallery({ items }: { items: Item[] }) {
 
   return (
     <div className="w-full flex justify-center mt-12">
-      <div className="relative w-full rounded-lg p-40" style={corkBackground}>
+      <div className="relative w-full rounded-lg p-40" style={accentBackground}>
         {/* subtle vignette */}
         <div
           className="absolute inset-0 pointer-events-none"
