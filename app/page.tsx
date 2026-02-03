@@ -178,14 +178,13 @@ export default function Home() {
               className="select-none"
             />
 
-            <p className="text-lg text-ink text-center max-w-xl">
-              Fine line and custom tattoo studio in Santa Clarita, CA
-            </p>
-
             {/* Book now button (intake flow) */}
             <div className="flex gap-4">
               <BookNowLauncher />
             </div>
+            <p className="text-lg text-ink text-center max-w-xl">
+              Fine line and custom tattoo studio in Santa Clarita, CA
+            </p>
           </div>
 
           {/* Main divider anchored near the bottom of the viewport */}
