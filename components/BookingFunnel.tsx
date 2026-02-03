@@ -706,6 +706,10 @@ export default function BookingFunnel() {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitSuccessMessage, setSubmitSuccessMessage] = useState<
+    string | null
+  >(null);
   const [stepError, setStepError] = useState<string | null>(null);
 
   const [data, setData] = useState<FunnelData>({
@@ -813,6 +817,31 @@ export default function BookingFunnel() {
   const totalSteps = steps.length;
   const current = steps[step];
 
+  const resetFunnel = () => {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+
+    setStep(0);
+    setSubmitError(null);
+    setSubmitSuccess(false);
+    setSubmitSuccessMessage(null);
+    setData({
+      fullName: "",
+      email: "",
+      phone: "",
+      tattooDescription: "",
+      referencePhotos: [],
+      dob: "",
+      photoId: null,
+      initialsPngDataUrl: null,
+      signaturePngDataUrl: null,
+      consentDate: todayISO(),
+    });
+  };
+
   const goNext = () => {
     if (current.id === "consentInitials") {
       const saved = initialsPadRef.current?.save?.() ?? null;
@@ -843,12 +872,22 @@ export default function BookingFunnel() {
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
 
   const submit = async () => {
+    if (submitting) return;
+    if (submitSuccess) return;
     setSubmitError(null);
+    setSubmitSuccess(false);
+    setSubmitSuccessMessage(null);
     setSubmitting(true);
     try {
       const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
       const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
       const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+
+      if (!serviceId || !templateId || !publicKey) {
+        throw new Error(
+          "Email service is not configured. Please try again later.",
+        );
+      }
 
       const payload: Record<string, any> = {
         from_name: data.fullName,
@@ -898,47 +937,46 @@ export default function BookingFunnel() {
         payload.attachment_name = pdf.attachment_name;
       }
 
-      if (serviceId && templateId && publicKey) {
-        const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            service_id: serviceId,
-            template_id: templateId,
-            user_id: publicKey,
-            template_params: payload,
-          }),
-        });
-        if (!res.ok) throw new Error(`EmailJS error ${res.status}`);
-        alert("Thanks — your request was sent.");
-      } else {
-        console.log("Booking funnel payload (dev):", payload);
-        alert("Thanks — request recorded (dev). See console.");
+      const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          service_id: serviceId,
+          template_id: templateId,
+          user_id: publicKey,
+          template_params: payload,
+        }),
+      });
+
+      if (!res.ok) {
+        let details = "";
+        try {
+          const text = await res.text();
+          details = text ? ` ${text}` : "";
+        } catch {
+          // ignore
+        }
+        throw new Error(
+          `We couldn't send your request (EmailJS ${res.status}).${details}`,
+        );
       }
+
+      setSubmitSuccess(true);
+      setSubmitSuccessMessage(
+        "Thanks — your request was sent. We'll reply to your email soon.",
+      );
 
       try {
         sessionStorage.removeItem(STORAGE_KEY);
       } catch {
         // ignore
       }
-
-      setStep(0);
-      setData({
-        fullName: "",
-        email: "",
-        phone: "",
-        tattooDescription: "",
-        referencePhotos: [],
-        dob: "",
-        photoId: null,
-        initialsPngDataUrl: null,
-        signaturePngDataUrl: null,
-        consentDate: todayISO(),
-      });
     } catch (err: any) {
-      setSubmitError(
-        err?.message || "There was an error sending your request.",
-      );
+      const message =
+        err?.message || "There was an error sending your request.";
+      setSubmitError(message);
+      setSubmitSuccess(false);
+      setSubmitSuccessMessage(null);
     } finally {
       setSubmitting(false);
     }
@@ -998,7 +1036,7 @@ export default function BookingFunnel() {
 
       if (e.key === "ArrowRight" && !editable) {
         e.preventDefault();
-        if (id === "review") submitRef.current();
+        if (id === "review" && !submitSuccess) submitRef.current();
         else if (canNext) goNextRef.current();
         return;
       }
@@ -1015,7 +1053,7 @@ export default function BookingFunnel() {
 
         if (id === "review") {
           e.preventDefault();
-          submitRef.current();
+          if (!submitSuccess) submitRef.current();
           return;
         }
 
@@ -1411,7 +1449,7 @@ export default function BookingFunnel() {
                     variant="accent"
                     label="Submit"
                     onClick={submit}
-                    disabled={submitting}
+                    disabled={submitting || submitSuccess}
                   >
                     {ArrowRightIcon}
                   </CircleIconButton>
@@ -1459,6 +1497,30 @@ export default function BookingFunnel() {
 
           {current.id === "review" && (
             <div className="mt-8 w-full max-w-2xl grid gap-4">
+              {submitSuccess ? (
+                <div className="rounded-2xl border border-black/10 bg-white px-5 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
+                  <div className="text-sm font-medium text-black">
+                    {submitSuccessMessage || "Thanks — your request was sent."}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <BouncyButton
+                      type="button"
+                      className="px-5 py-2 rounded-full border border-black/15 text-sm hover:bg-black/5"
+                      onClick={() => router.push("/")}
+                    >
+                      Back to home
+                    </BouncyButton>
+                    <BouncyButton
+                      type="button"
+                      className="px-5 py-2 rounded-full border border-black/15 text-sm hover:bg-black/5"
+                      onClick={resetFunnel}
+                    >
+                      New request
+                    </BouncyButton>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid gap-3">
                 {(
                   [
@@ -1504,8 +1566,20 @@ export default function BookingFunnel() {
                 </div>
               </div>
 
+              {submitting && !submitSuccess ? (
+                <div className="text-xs text-black/45 animate-pulse">
+                  Sending…
+                </div>
+              ) : null}
+
               {submitError ? (
                 <div className="text-sm text-red-700">{submitError}</div>
+              ) : null}
+
+              {!submitSuccess && !submitError ? (
+                <div className="text-xs text-black/45">
+                  By submitting, you confirm the information above is correct.
+                </div>
               ) : null}
             </div>
           )}
