@@ -1313,7 +1313,7 @@ export default function BookingFunnel() {
                             ? `Selected: ${data.referencePhotos.length} image${
                                 data.referencePhotos.length === 1 ? "" : "s"
                               }`
-                            : "Tap to add reference images"}
+                            : "Tap to add"}
                         </BouncyButton>
 
                         {stepError ? (
