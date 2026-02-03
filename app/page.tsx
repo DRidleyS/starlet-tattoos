@@ -183,7 +183,7 @@ export default function Home() {
               <BookNowLauncher />
             </div>
             <p className="text-lg text-ink text-center max-w-xl">
-              Fine line and custom tattoo studio in Santa Clarita, CA
+              Fine line and custom tattoo studio.
             </p>
           </div>
 
