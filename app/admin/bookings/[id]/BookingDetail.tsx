@@ -68,7 +68,7 @@ export default function BookingDetail({
   };
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-3xl w-full">
       <Link
         href="/admin/bookings"
         className="text-sm text-neutral-500 hover:text-white mb-4 inline-block"
@@ -82,7 +82,7 @@ export default function BookingDetail({
       </p>
 
       {/* Contact info */}
-      <section className="grid grid-cols-2 gap-4 mb-8">
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <Field label="Email" value={booking.email} />
         <Field label="Phone" value={booking.phone} />
         <Field label="Date of Birth" value={booking.dob} />
@@ -104,7 +104,7 @@ export default function BookingDetail({
         <h2 className="text-sm font-semibold text-neutral-500 uppercase mb-2">
           Attachments
         </h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {consentFormUrl && (
             <ImageCard label="Consent Form" src={consentFormUrl} />
           )}
@@ -145,7 +145,7 @@ export default function BookingDetail({
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={save}
             disabled={saving}
@@ -157,12 +157,12 @@ export default function BookingDetail({
           {!confirmDelete ? (
             <button
               onClick={() => setConfirmDelete(true)}
-              className="text-sm text-neutral-500 hover:text-red-400 transition ml-auto"
+              className="text-sm text-neutral-500 hover:text-red-400 transition sm:ml-auto"
             >
               Delete booking
             </button>
           ) : (
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               <span className="text-sm text-red-400">Are you sure?</span>
               <button
                 onClick={handleDelete}

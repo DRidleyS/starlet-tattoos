@@ -130,11 +130,11 @@ export default function GalleryAdminPage() {
                 alt={img.alt_text || ""}
                 className="w-full h-40 object-cover"
               />
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+              <div className="absolute inset-0 bg-black/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition flex items-center justify-center gap-2">
                 <button
                   onClick={() => moveImage(i, -1)}
                   disabled={i === 0}
-                  className="bg-neutral-700 hover:bg-neutral-600 text-white w-8 h-8 rounded-lg disabled:opacity-30 text-sm"
+                  className="bg-neutral-700 hover:bg-neutral-600 text-white w-9 h-9 md:w-8 md:h-8 rounded-lg disabled:opacity-30 text-sm"
                   title="Move left"
                 >
                   &larr;
@@ -142,14 +142,14 @@ export default function GalleryAdminPage() {
                 <button
                   onClick={() => moveImage(i, 1)}
                   disabled={i === filtered.length - 1}
-                  className="bg-neutral-700 hover:bg-neutral-600 text-white w-8 h-8 rounded-lg disabled:opacity-30 text-sm"
+                  className="bg-neutral-700 hover:bg-neutral-600 text-white w-9 h-9 md:w-8 md:h-8 rounded-lg disabled:opacity-30 text-sm"
                   title="Move right"
                 >
                   &rarr;
                 </button>
                 <button
                   onClick={() => handleDelete(img.id)}
-                  className="bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-lg text-sm"
+                  className="bg-red-600 hover:bg-red-700 text-white w-9 h-9 md:w-8 md:h-8 rounded-lg text-sm"
                   title="Delete"
                 >
                   &times;
