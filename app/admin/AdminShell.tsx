@@ -13,7 +13,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex">
+    <div className="min-h-screen bg-neutral-950 text-white flex font-body [&_h1]:font-body [&_h2]:font-body [&_h3]:font-body [&_h1]:text-white [&_h2]:text-white [&_h3]:text-white [&_h1]:mb-0 [&_h2]:mb-0 [&_h3]:mb-0">
       {/* Sidebar */}
       <aside className="w-56 bg-neutral-900 border-r border-neutral-800 flex flex-col">
         <div className="p-5 border-b border-neutral-800">

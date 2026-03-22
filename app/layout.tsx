@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Caveat, Inter } from "next/font/google";
 import "./globals.css";
-import Footer from "../components/Footer";
+import LayoutShell from "./LayoutShell";
 
 const titleFont = Caveat({
   subsets: ["latin"],
@@ -29,8 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${titleFont.variable} ${bodyFont.variable}`}>
       <body className="antialiased">
-        <div style={{ paddingBottom: "10rem" }}>{children}</div>
-        <Footer />
+        <LayoutShell>{children}</LayoutShell>
       </body>
     </html>
   );

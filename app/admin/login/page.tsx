@@ -34,12 +34,12 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-950">
+    <div className="min-h-screen flex items-center justify-center bg-neutral-950 font-body">
       <form
         onSubmit={handleSubmit}
         className="bg-neutral-900 p-8 rounded-xl w-full max-w-sm space-y-5 shadow-xl"
       >
-        <h1 className="text-2xl font-bold text-white text-center">
+        <h1 className="text-2xl font-bold text-white text-center font-body">
           Admin Login
         </h1>
 

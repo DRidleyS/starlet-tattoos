@@ -22,9 +22,13 @@ h4,
 h5,
 h6 {
   font-family: var(--font-title), cursive;
-  color: #111;
   font-weight: 700;
   margin-bottom: 0.5em;
+}
+
+/* Default heading color for public pages (admin overrides via Tailwind) */
+:where(h1, h2, h3, h4, h5, h6) {
+  color: #111;
 }
 
 .font-title {
