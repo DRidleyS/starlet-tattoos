@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
 import SignaturePad from "signature_pad";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { useRouter } from "next/navigation";
 
 const ACCENT = "#b76e79";
@@ -119,9 +118,6 @@ const STORAGE_KEY = "starlet_booking_funnel_v1";
 const MAX_REFERENCE_PHOTOS = 3;
 const MAX_REFERENCE_PHOTO_BYTES = 1_800_000; // ~1.8MB each
 
-// EmailJS has a small total attachment limit (often 500KB). We budget slightly
-// under to account for overhead/variance.
-const MAX_TOTAL_ATTACHMENTS_BYTES = 480_000;
 
 const CONSENT_ITEMS: Array<{ key: string; text: string }> = [
   {
@@ -538,339 +534,6 @@ function ConsentChecklist({ initialsMark }: { initialsMark: string | null }) {
   );
 }
 
-async function buildConsentPdf(data: FunnelData) {
-  try {
-    // Prefer a boilerplate PDF if you provide one in /public.
-    // If it's missing, generate a clean consent summary PDF.
-    let pdfDoc: PDFDocument;
-    let page;
-    try {
-      const tplRes = await fetch("/consent_boilerplate.pdf");
-      if (!tplRes.ok) throw new Error("missing template");
-      const tplBytes = await tplRes.arrayBuffer();
-
-      // If a heavy template is provided, it can easily exceed EmailJS attachment
-      // limits. Fall back to a clean generated PDF instead.
-      if (tplBytes.byteLength > 250_000) throw new Error("template too large");
-
-      pdfDoc = await PDFDocument.load(tplBytes);
-      page = pdfDoc.getPages()[0];
-    } catch {
-      pdfDoc = await PDFDocument.create();
-      page = pdfDoc.addPage([612, 792]); // US Letter
-    }
-
-    const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const safe = (s: string) => (s || "").replace(/[\r\n]+/g, " ").trim();
-
-    // Header
-    try {
-      page.drawText("Tattoo Consent Summary", {
-        x: 50,
-        y: 750,
-        size: 16,
-        font: helv,
-        color: rgb(0, 0, 0),
-      });
-      page.drawText(`Consent date: ${safe(data.consentDate)}`, {
-        x: 50,
-        y: 732,
-        size: 11,
-        font: helv,
-        color: rgb(0, 0, 0),
-      });
-    } catch {
-      // ignore
-    }
-
-    // Contact details
-    page.drawText(`Name: ${safe(data.fullName)}`, {
-      x: 50,
-      y: 700,
-      size: 11,
-      font: helv,
-      color: rgb(0, 0, 0),
-    });
-    page.drawText(`DOB: ${safe(data.dob)}`, {
-      x: 50,
-      y: 682,
-      size: 11,
-      font: helv,
-      color: rgb(0, 0, 0),
-    });
-    page.drawText(`Email: ${safe(data.email)}`, {
-      x: 50,
-      y: 664,
-      size: 11,
-      font: helv,
-      color: rgb(0, 0, 0),
-    });
-    page.drawText(`Phone: ${safe(data.phone)}`, {
-      x: 50,
-      y: 646,
-      size: 11,
-      font: helv,
-      color: rgb(0, 0, 0),
-    });
-
-    // Consent checklist summary
-    try {
-      page.drawText("Acknowledgements:", {
-        x: 50,
-        y: 600,
-        size: 12,
-        font: helv,
-        color: rgb(0, 0, 0),
-      });
-
-      let y = 582;
-      for (const item of CONSENT_ITEMS) {
-        page.drawText(`• ${safe(item.text)}`, {
-          x: 60,
-          y,
-          size: 9.5,
-          font: helv,
-          color: rgb(0, 0, 0),
-        });
-        y -= 14;
-        if (y < 240) break;
-      }
-    } catch {
-      // ignore
-    }
-
-    // Initials and signature images
-    if (data.initialsPngDataUrl) {
-      try {
-        const jpgBytes = await compressDataUrlToJpegBytes(
-          data.initialsPngDataUrl,
-          {
-            maxBytes: 35_000,
-            maxDimension: 520,
-            initialQuality: 0.78,
-          },
-        );
-        const img = await pdfDoc.embedJpg(jpgBytes);
-        page.drawText("Initials:", {
-          x: 50,
-          y: 210,
-          size: 11,
-          font: helv,
-          color: rgb(0, 0, 0),
-        });
-        page.drawImage(img, { x: 110, y: 198, width: 80, height: 22 });
-      } catch {
-        // ignore
-      }
-    }
-
-    if (data.signaturePngDataUrl) {
-      try {
-        const jpgBytes = await compressDataUrlToJpegBytes(
-          data.signaturePngDataUrl,
-          {
-            maxBytes: 70_000,
-            maxDimension: 1400,
-            initialQuality: 0.78,
-          },
-        );
-        const sigImg = await pdfDoc.embedJpg(jpgBytes);
-        page.drawText("Signature:", {
-          x: 50,
-          y: 160,
-          size: 11,
-          font: helv,
-          color: rgb(0, 0, 0),
-        });
-        page.drawImage(sigImg, { x: 120, y: 120, width: 220, height: 70 });
-      } catch {
-        // ignore
-      }
-    }
-
-    const pdfBytes = await pdfDoc.save();
-
-    const uint8ToBase64 = (u8: Uint8Array) => {
-      let binary = "";
-      for (let i = 0; i < u8.byteLength; i++)
-        binary += String.fromCharCode(u8[i]);
-      return btoa(binary);
-    };
-
-    const base64 = uint8ToBase64(new Uint8Array(pdfBytes));
-    return {
-      attachment: `data:application/pdf;base64,${base64}`,
-      attachment_name: `${(data.fullName || "consent").replace(/\s+/g, "_")}_consent_form.pdf`,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () => {
-      const res = reader.result;
-      if (typeof res === "string") resolve(res);
-      else reject(new Error("Unexpected FileReader result"));
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function estimateDataUrlBytes(dataUrl: string) {
-  const idx = (dataUrl || "").indexOf(",");
-  if (idx === -1) return 0;
-  const base64 = dataUrl.slice(idx + 1);
-  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
-  // base64 length is ~4/3 of bytes
-  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
-}
-
-function withJpegExtension(fileName: string) {
-  const safe = fileName || "image";
-  const dot = safe.lastIndexOf(".");
-  const base = dot > 0 ? safe.slice(0, dot) : safe;
-  return `${base}.jpg`;
-}
-
-function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  type: string,
-  quality?: number,
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => {
-        if (!b) reject(new Error("Failed to encode image"));
-        else resolve(b);
-      },
-      type,
-      quality,
-    );
-  });
-}
-
-async function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
-  const url = URL.createObjectURL(blob);
-  try {
-    const img = new Image();
-    img.decoding = "async";
-    img.src = url;
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Failed to load image"));
-    });
-    return img;
-  } finally {
-    try {
-      URL.revokeObjectURL(url);
-    } catch {
-      // ignore
-    }
-  }
-}
-
-async function compressImageBlobToJpegBlob(
-  input: Blob,
-  opts: {
-    maxBytes: number;
-    maxDimension: number;
-    initialQuality?: number;
-    minQuality?: number;
-  },
-): Promise<Blob> {
-  const img = await loadImageFromBlob(input);
-
-  const initialQuality = opts.initialQuality ?? 0.82;
-  const minQuality = opts.minQuality ?? 0.5;
-
-  const srcW = Math.max(1, img.naturalWidth || img.width || 1);
-  const srcH = Math.max(1, img.naturalHeight || img.height || 1);
-
-  let scale = 1;
-  const maxDim = Math.max(srcW, srcH);
-  if (maxDim > opts.maxDimension) scale = opts.maxDimension / maxDim;
-
-  for (let pass = 0; pass < 6; pass++) {
-    const w = Math.max(1, Math.round(srcW * scale));
-    const h = Math.max(1, Math.round(srcH * scale));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas not supported");
-    ctx.drawImage(img, 0, 0, w, h);
-
-    let q = initialQuality;
-    for (let i = 0; i < 8; i++) {
-      const out = await canvasToBlob(canvas, "image/jpeg", q);
-      if (out.size <= opts.maxBytes) return out;
-      if (q <= minQuality) break;
-      q = Math.max(minQuality, q * 0.86);
-    }
-
-    scale *= 0.85;
-  }
-
-  // Last resort: return the smallest we could get at low quality.
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(srcW * scale));
-  canvas.height = Math.max(1, Math.round(srcH * scale));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not supported");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvasToBlob(canvas, "image/jpeg", minQuality);
-}
-
-async function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read blob"));
-    reader.onload = () => {
-      const res = reader.result;
-      if (typeof res === "string") resolve(res);
-      else reject(new Error("Unexpected FileReader result"));
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function compressImageFileToJpegDataUrl(
-  file: File,
-  opts: {
-    maxBytes: number;
-    maxDimension: number;
-    initialQuality?: number;
-    minQuality?: number;
-  },
-): Promise<{ dataUrl: string; fileName: string; byteSize: number }> {
-  const outBlob = await compressImageBlobToJpegBlob(file, opts);
-  const dataUrl = await blobToDataUrl(outBlob);
-  return {
-    dataUrl,
-    fileName: withJpegExtension(file.name),
-    byteSize: outBlob.size,
-  };
-}
-
-async function compressDataUrlToJpegBytes(
-  dataUrl: string,
-  opts: {
-    maxBytes: number;
-    maxDimension: number;
-    initialQuality?: number;
-    minQuality?: number;
-  },
-): Promise<Uint8Array> {
-  const blob = await fetch(dataUrl).then((r) => r.blob());
-  const outBlob = await compressImageBlobToJpegBlob(blob, opts);
-  const buf = await outBlob.arrayBuffer();
-  return new Uint8Array(buf);
-}
 
 export default function BookingFunnel() {
   const router = useRouter();
@@ -1050,175 +713,40 @@ export default function BookingFunnel() {
     setSubmitSuccessMessage(null);
     setSubmitting(true);
     try {
-      const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
-      const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
-      const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+      const formData = new FormData();
+      formData.append("fullName", data.fullName);
+      formData.append("email", data.email);
+      formData.append("phone", data.phone);
+      formData.append("tattooDescription", data.tattooDescription);
+      formData.append("dob", data.dob);
+      formData.append("consentDate", data.consentDate);
 
-      if (!serviceId || !templateId || !publicKey) {
-        throw new Error(
-          "Email service is not configured. Please try again later.",
-        );
+      if (data.photoId) formData.append("photoId", data.photoId);
+      for (const ref of data.referencePhotos) {
+        formData.append("referencePhotos", ref);
+      }
+      if (data.initialsPngDataUrl) {
+        formData.append("initialsPngDataUrl", data.initialsPngDataUrl);
+      }
+      if (data.signaturePngDataUrl) {
+        formData.append("signaturePngDataUrl", data.signaturePngDataUrl);
       }
 
-      const payload: Record<string, any> = {
-        from_name: data.fullName,
-        reply_to: data.email,
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        tattooDescription: data.tattooDescription,
-        referencePhotos_count: "0",
-        dob: data.dob,
-        photoId_name: data.photoId?.name || "",
-        consentDate: data.consentDate,
-      };
-
-      // Attach uploaded Photo ID (EmailJS template must define a Variable Attachment
-      // whose parameter name is `photo_id`).
-      if (data.photoId) {
-        const MAX = 6_000_000; // avoid huge client-side work
-        if (data.photoId.size > MAX) {
-          throw new Error(
-            "Photo ID file is too large. Please upload a smaller image (under ~2MB).",
-          );
-        }
-
-        const compressed = await compressImageFileToJpegDataUrl(data.photoId, {
-          maxBytes: 120_000,
-          maxDimension: 1600,
-          initialQuality: 0.82,
-          minQuality: 0.52,
-        });
-        payload.photo_id = compressed.dataUrl;
-        payload.photo_id_name = compressed.fileName;
-      }
-
-      // Attach up to 3 reference photos.
-      // EmailJS template must define Variable Attachments with parameter names:
-      // `reference_1`, `reference_2`, `reference_3`.
-      const refs = (data.referencePhotos || []).slice(0, MAX_REFERENCE_PHOTOS);
-      const compressedRefs: Array<{ dataUrl: string; fileName: string }> = [];
-      for (let i = 0; i < refs.length; i++) {
-        const f = refs[i];
-        if (f.size > MAX_REFERENCE_PHOTO_BYTES) {
-          throw new Error(
-            `Reference photo ${i + 1} is too large. Please upload images under ~2MB each.`,
-          );
-        }
-        const compressed = await compressImageFileToJpegDataUrl(f, {
-          maxBytes: 80_000,
-          maxDimension: 1400,
-          initialQuality: 0.82,
-          minQuality: 0.52,
-        });
-        compressedRefs.push({
-          dataUrl: compressed.dataUrl,
-          fileName: compressed.fileName,
-        });
-      }
-
-      const pdf = await buildConsentPdf(data);
-      if (pdf) {
-        payload.attachment = pdf.attachment;
-        payload.attachment_name = pdf.attachment_name;
-      }
-
-      // Ensure we fit within EmailJS attachment limits by packing attachments
-      // into a single total byte budget.
-      let usedBytes = 0;
-      const addAttachmentIfFits = (
-        key: string,
-        dataUrl?: string,
-        nameKey?: string,
-        nameValue?: string,
-      ) => {
-        if (!dataUrl) return false;
-        const bytes = estimateDataUrlBytes(dataUrl);
-        if (usedBytes + bytes > MAX_TOTAL_ATTACHMENTS_BYTES) return false;
-        payload[key] = dataUrl;
-        if (nameKey && typeof nameValue === "string")
-          payload[nameKey] = nameValue;
-        usedBytes += bytes;
-        return true;
-      };
-
-      // Prefer including the PDF + photo ID; then add reference photos as space allows.
-      if (pdf) {
-        // Re-add via helper to ensure budget is applied (payload already set above).
-        delete payload.attachment;
-        delete payload.attachment_name;
-        addAttachmentIfFits(
-          "attachment",
-          pdf.attachment,
-          "attachment_name",
-          pdf.attachment_name,
-        );
-      }
-
-      if (payload.photo_id) {
-        const idUrl = payload.photo_id as string;
-        const idName = payload.photo_id_name as string;
-        delete payload.photo_id;
-        delete payload.photo_id_name;
-        const ok = addAttachmentIfFits(
-          "photo_id",
-          idUrl,
-          "photo_id_name",
-          idName,
-        );
-        if (!ok) {
-          throw new Error(
-            "Your Photo ID is too large to send via the form. Please upload a smaller image.",
-          );
-        }
-      }
-
-      let sentRefs = 0;
-      for (let i = 0; i < compressedRefs.length; i++) {
-        const r = compressedRefs[i];
-        const ok = addAttachmentIfFits(
-          `reference_${i + 1}`,
-          r.dataUrl,
-          `reference_${i + 1}_name`,
-          r.fileName,
-        );
-        if (ok) sentRefs++;
-        else break;
-      }
-
-      payload.referencePhotos_count = String(sentRefs);
-      if (compressedRefs.length > sentRefs) {
-        payload.referencePhotos_note = `Only ${sentRefs} of ${compressedRefs.length} reference photo(s) were included due to Email size limits.`;
-      }
-
-      // Final sanity check to avoid a failed request after doing work.
-      if (usedBytes > MAX_TOTAL_ATTACHMENTS_BYTES) {
-        throw new Error(
-          "Attachments are too large to send (EmailJS limit is 500KB). Please remove some reference photos and try again.",
-        );
-      }
-
-      const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      const res = await fetch("/api/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          service_id: serviceId,
-          template_id: templateId,
-          user_id: publicKey,
-          template_params: payload,
-        }),
+        body: formData,
       });
 
       if (!res.ok) {
         let details = "";
         try {
-          const text = await res.text();
-          details = text ? ` ${text}` : "";
+          const body = await res.json();
+          details = body.error ? ` ${body.error}` : "";
         } catch {
           // ignore
         }
         throw new Error(
-          `We couldn't send your request (EmailJS ${res.status}).${details}`,
+          `We couldn't send your request (${res.status}).${details}`,
         );
       }
 

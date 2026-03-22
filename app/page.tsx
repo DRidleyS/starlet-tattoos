@@ -10,6 +10,36 @@ import BookNowLauncher from "@/components/BookNowLauncher";
 
 const AGE_GATE_KEY = "starlet_age_gate_ok_v1";
 
+const FALLBACK_GALLERY = [
+  { paper: "/tat1.png", onBody: "/tat1.png" },
+  { paper: "/tat2.png", onBody: "/tat2.png" },
+  { paper: "/tat3.png", onBody: "/tat3.png" },
+  { paper: "/tat4.png", onBody: "/tat4.png" },
+  { paper: "/tat5.png", onBody: "/tat5.png" },
+  { paper: "/tat6.png", onBody: "/tat6.png" },
+  { paper: "/tat7.png", onBody: "/tat7.png" },
+  { paper: "/tat8.png", onBody: "/tat8.png" },
+  { paper: "/tat9.png", onBody: "/tat9.png" },
+  { paper: "/tat10.png", onBody: "/tat10.png" },
+  { paper: "/tat11.png", onBody: "/tat11.png" },
+  { paper: "/tat12.png", onBody: "/tat12.png" },
+  { paper: "/tat13.png", onBody: "/tat13.png" },
+  { paper: "/tat14.PNG", onBody: "/tat14.PNG" },
+  { paper: "/tat15.png", onBody: "/tat15.png" },
+  { paper: "/tat16.png", onBody: "/tat16.png" },
+];
+
+const FALLBACK_FLASH = [
+  { paper: "/flash1.PNG" },
+  { paper: "/flash2.PNG" },
+  { paper: "/flash3.PNG" },
+  { paper: "/flash4.PNG" },
+  { paper: "/flash5.PNG" },
+  { paper: "/flash6.PNG" },
+  { paper: "/flash7.PNG" },
+  { paper: "/flash8.PNG" },
+];
+
 function AgeGateModal({
   open,
   onYes,
@@ -75,6 +105,28 @@ export default function Home() {
   const [tab, setTab] = useState<"gallery" | "flash">("gallery");
   const [ageGateOpen, setAgeGateOpen] = useState(false);
   const [ageDenied, setAgeDenied] = useState(false);
+  const [galleryItems, setGalleryItems] = useState(FALLBACK_GALLERY);
+  const [flashItems, setFlashItems] = useState(FALLBACK_FLASH);
+
+  // Fetch dynamic gallery images (falls back to hardcoded if API unavailable)
+  useEffect(() => {
+    fetch("/api/gallery")
+      .then((r) => r.json())
+      .then((all: { category: string; image_url: string; sort_order: number }[]) => {
+        if (!Array.isArray(all) || all.length === 0) return;
+        const gallery = all
+          .filter((img) => img.category === "gallery")
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((img) => ({ paper: img.image_url, onBody: img.image_url }));
+        const flash = all
+          .filter((img) => img.category === "flash")
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((img) => ({ paper: img.image_url }));
+        if (gallery.length > 0) setGalleryItems(gallery);
+        if (flash.length > 0) setFlashItems(flash);
+      })
+      .catch(() => {});
+  }, []);
 
   // VineTopFrame renders an absolute SVG with height=120px.
   // iOS Safari + safe-area can shrink the available top padding, so we reserve
@@ -227,39 +279,9 @@ export default function Home() {
             <div className="h-14 sm:h-20" aria-hidden />
 
             {tab === "gallery" ? (
-              <HoneycombGallery
-                items={[
-                  { paper: "/tat1.png", onBody: "/tat1.png" },
-                  { paper: "/tat2.png", onBody: "/tat2.png" },
-                  { paper: "/tat3.png", onBody: "/tat3.png" },
-                  { paper: "/tat4.png", onBody: "/tat4.png" },
-                  { paper: "/tat5.png", onBody: "/tat5.png" },
-                  { paper: "/tat6.png", onBody: "/tat6.png" },
-                  { paper: "/tat7.png", onBody: "/tat7.png" },
-                  { paper: "/tat8.png", onBody: "/tat8.png" },
-                  { paper: "/tat9.png", onBody: "/tat9.png" },
-                  { paper: "/tat10.png", onBody: "/tat10.png" },
-                  { paper: "/tat11.png", onBody: "/tat11.png" },
-                  { paper: "/tat12.png", onBody: "/tat12.png" },
-                  { paper: "/tat13.png", onBody: "/tat13.png" },
-                  { paper: "/tat14.PNG", onBody: "/tat14.PNG" },
-                  { paper: "/tat15.png", onBody: "/tat15.png" },
-                  { paper: "/tat16.png", onBody: "/tat16.png" },
-                ]}
-              />
+              <HoneycombGallery items={galleryItems} />
             ) : (
-              <FlashGallery
-                items={[
-                  { paper: "/flash1.PNG" },
-                  { paper: "/flash2.PNG" },
-                  { paper: "/flash3.PNG" },
-                  { paper: "/flash4.PNG" },
-                  { paper: "/flash5.PNG" },
-                  { paper: "/flash6.PNG" },
-                  { paper: "/flash7.PNG" },
-                  { paper: "/flash8.PNG" },
-                ]}
-              />
+              <FlashGallery items={flashItems} />
             )}
           </div>
         </section>
