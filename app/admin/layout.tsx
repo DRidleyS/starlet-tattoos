@@ -13,7 +13,12 @@ export default async function AdminLayout({
   // Middleware already handles redirect for unauthenticated users on other admin pages
 
   if (!session?.user) {
-    return <>{children}</>;
+    // Dark background even without the full shell (login page, session loading)
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white font-body">
+        {children}
+      </div>
+    );
   }
 
   return <AdminShell>{children}</AdminShell>;

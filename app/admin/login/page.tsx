@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -23,12 +21,13 @@ export default function AdminLoginPage() {
       });
       if (res?.error) {
         setError("Invalid email or password.");
+        setLoading(false);
       } else {
-        router.push("/admin/bookings");
+        // Full page load so the server layout picks up the new session cookie
+        window.location.href = "/admin/bookings";
       }
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
