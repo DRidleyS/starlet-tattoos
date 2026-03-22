@@ -9,24 +9,24 @@ const TEMPLATE_PATH = path.join(
 );
 
 // Measured from the 1024x1536 template
-const INITIALS_X = 48;
+const INITIALS_X = 86;
 const INITIALS_W = 65;
 const INITIALS_H = 18;
 
 // Y positions for each of the 12 consent item blank lines
 const INITIALS_Y = [
-  348, // 1. not under influence
-  371, // 2. not pregnant
-  394, // 3. free of communicable disease
-  417, // 4. over 18
-  440, // 5. no acne/freckles/moles (wraps)
-  486, // 6. viewed design, checked spelling (wraps)
-  530, // 7. truthfully represented allergies (wraps)
-  576, // 8. infection risk/aftercare (wraps)
-  638, // 9. permanent change (wraps)
-  684, // 10. my choice alone (wraps)
-  727, // 11. inks not FDA approved (wraps)
-  773, // 12. chance of feeling lightheaded (wraps)
+  352, // 1. not under influence
+  375, // 2. not pregnant
+  397, // 3. free of communicable disease
+  419, // 4. over 18
+  470, // 5. no acne/freckles/moles (wraps)
+  522, // 6. viewed design, checked spelling (wraps)
+  546, // 7. truthfully represented allergies (wraps)
+  568, // 8. infection risk/aftercare (wraps)
+  660, // 9. permanent change (wraps)
+  706, // 10. my choice alone (wraps)
+  752, // 11. inks not FDA approved (wraps)
+  822, // 12. chance of feeling lightheaded (wraps)
 ];
 
 // Bottom fields: x position where text starts (after label), y position

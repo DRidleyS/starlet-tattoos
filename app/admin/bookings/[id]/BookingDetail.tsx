@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 const STATUSES = ["new", "contacted", "booked", "completed", "cancelled"];
@@ -37,6 +38,21 @@ export default function BookingDetail({
   const [notes, setNotes] = useState(booking.notes || "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    const res = await fetch(`/api/bookings/${booking.id}`, { method: "DELETE" });
+    if (res.ok) {
+      router.push("/admin/bookings");
+    } else {
+      setDeleting(false);
+      setConfirmDelete(false);
+      alert("Failed to delete booking");
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -129,13 +145,41 @@ export default function BookingDetail({
           />
         </div>
 
-        <button
-          onClick={save}
-          disabled={saving}
-          className="bg-rose-500 hover:bg-rose-600 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-50"
-        >
-          {saving ? "Saving..." : saved ? "Saved!" : "Save"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="bg-rose-500 hover:bg-rose-600 text-white font-semibold px-5 py-2 rounded-lg transition disabled:opacity-50"
+          >
+            {saving ? "Saving..." : saved ? "Saved!" : "Save"}
+          </button>
+
+          {!confirmDelete ? (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="text-sm text-neutral-500 hover:text-red-400 transition ml-auto"
+            >
+              Delete booking
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-sm text-red-400">Are you sure?</span>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Yes, delete"}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-sm text-neutral-500 hover:text-white transition"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
