@@ -116,7 +116,47 @@ type FunnelData = {
 const STORAGE_KEY = "starlet_booking_funnel_v1";
 
 const MAX_REFERENCE_PHOTOS = 3;
-const MAX_REFERENCE_PHOTO_BYTES = 10_000_000; // ~10MB each (typical iPhone photo)
+
+/** Resize an image file client-side so uploads stay small (saves bandwidth + storage). */
+function resizeImage(
+  file: File,
+  maxDim = 1600,
+  quality = 0.8,
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width <= maxDim && height <= maxDim && file.size <= 1_500_000) {
+        // Already small enough — skip resize
+        resolve(file);
+        return;
+      }
+      if (width > height) {
+        if (width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+      } else {
+        if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error("Image resize failed")); return; }
+          resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }));
+        },
+        "image/jpeg",
+        quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read image")); };
+    img.src = url;
+  });
+}
 
 
 const CONSENT_ITEMS: Array<{ key: string; text: string }> = [
@@ -953,26 +993,23 @@ export default function BookingFunnel() {
   const filePickerRef = useRef<HTMLInputElement | null>(null);
   const referencePickerRef = useRef<HTMLInputElement | null>(null);
 
-  const addReferenceFiles = (files: FileList | null) => {
+  const addReferenceFiles = async (files: FileList | null) => {
     const incoming = files ? Array.from(files) : [];
     if (!incoming.length) return;
 
-    const tooBig = incoming.find((f) => f.size > MAX_REFERENCE_PHOTO_BYTES);
-    if (tooBig) {
-      setStepError(
-        "One of those images is too large. Please upload images under 10MB each.",
-      );
-      return;
+    try {
+      const resized = await Promise.all(incoming.map((f) => resizeImage(f)));
+      setData((d) => {
+        const next = [...(d.referencePhotos || []), ...resized].slice(
+          0,
+          MAX_REFERENCE_PHOTOS,
+        );
+        return { ...d, referencePhotos: next };
+      });
+      setStepError(null);
+    } catch {
+      setStepError("Could not process one of those images. Please try again.");
     }
-
-    setData((d) => {
-      const next = [...(d.referencePhotos || []), ...incoming].slice(
-        0,
-        MAX_REFERENCE_PHOTOS,
-      );
-      return { ...d, referencePhotos: next };
-    });
-    setStepError(null);
   };
 
   return (
@@ -1099,9 +1136,15 @@ export default function BookingFunnel() {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0] || null;
-                          setData((d) => ({ ...d, photoId: f }));
+                        onChange={async (e) => {
+                          const raw = e.target.files?.[0] || null;
+                          if (!raw) return;
+                          try {
+                            const resized = await resizeImage(raw);
+                            setData((d) => ({ ...d, photoId: resized }));
+                          } catch {
+                            setStepError("Could not process that image. Please try another.");
+                          }
                         }}
                       />
                       <BouncyButton
