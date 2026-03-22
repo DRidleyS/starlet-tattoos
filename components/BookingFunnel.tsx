@@ -116,7 +116,7 @@ type FunnelData = {
 const STORAGE_KEY = "starlet_booking_funnel_v1";
 
 const MAX_REFERENCE_PHOTOS = 3;
-const MAX_REFERENCE_PHOTO_BYTES = 1_800_000; // ~1.8MB each
+const MAX_REFERENCE_PHOTO_BYTES = 10_000_000; // ~10MB each (typical iPhone photo)
 
 
 const CONSENT_ITEMS: Array<{ key: string; text: string }> = [
@@ -960,7 +960,7 @@ export default function BookingFunnel() {
     const tooBig = incoming.find((f) => f.size > MAX_REFERENCE_PHOTO_BYTES);
     if (tooBig) {
       setStepError(
-        "One of those images is too large. Please upload images under ~2MB each.",
+        "One of those images is too large. Please upload images under 10MB each.",
       );
       return;
     }
