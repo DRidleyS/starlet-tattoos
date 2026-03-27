@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { createServerClient } from "@/lib/supabase-server";
+import { auth } from "@/lib/auth";
+
+const MAX_DIM = 1600;
+const JPEG_QUALITY = 80;
 
 export async function GET() {
   const supabase = createServerClient();
@@ -15,6 +20,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const supabase = createServerClient();
   const form = await req.formData();
   const file = form.get("file") as File | null;
@@ -26,14 +35,18 @@ export async function POST(req: NextRequest) {
   }
 
   const id = crypto.randomUUID();
-  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const storagePath = `${category}/${id}.${ext}`;
+  const storagePath = `${category}/${id}.jpg`;
 
-  const buf = Buffer.from(await file.arrayBuffer());
+  const rawBuf = Buffer.from(await file.arrayBuffer());
+  const buf = await sharp(rawBuf)
+    .resize(MAX_DIM, MAX_DIM, { fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: JPEG_QUALITY })
+    .toBuffer();
+
   const { error: uploadErr } = await supabase.storage
     .from("gallery")
     .upload(storagePath, buf, {
-      contentType: file.type,
+      contentType: "image/jpeg",
       upsert: true,
     });
 

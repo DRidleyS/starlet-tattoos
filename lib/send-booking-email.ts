@@ -9,6 +9,14 @@ function getResend() {
 const FROM = process.env.EMAIL_FROM || "bookings@starlettattoos.ink";
 const TO = process.env.EMAIL_TO || "bookings@starlettattoos.ink";
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export async function sendBookingEmail(
   booking: {
     fullName: string;
@@ -26,7 +34,7 @@ export async function sendBookingEmail(
 ) {
   const emailAttachments: { filename: string; content: Buffer }[] = [
     {
-      filename: `${booking.fullName.replace(/\s+/g, "_")}_consent_form.png`,
+      filename: `${booking.fullName.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}_consent_form.png`,
       content: Buffer.from(attachments.consentForm),
     },
   ];
@@ -51,18 +59,18 @@ export async function sendBookingEmail(
     from: `Starlet Tattoos <${FROM}>`,
     to: [TO],
     replyTo: booking.email,
-    subject: `New Booking Request — ${booking.fullName}`,
+    subject: `New Booking Request — ${escapeHtml(booking.fullName)}`,
     html: `
       <h2>New Booking Request</h2>
       <table style="border-collapse:collapse">
-        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Name</td><td>${booking.fullName}</td></tr>
-        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Email</td><td>${booking.email}</td></tr>
-        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Phone</td><td>${booking.phone}</td></tr>
-        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">DOB</td><td>${booking.dob}</td></tr>
-        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Consent Date</td><td>${booking.consentDate}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Name</td><td>${escapeHtml(booking.fullName)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Email</td><td>${escapeHtml(booking.email)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Phone</td><td>${escapeHtml(booking.phone)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">DOB</td><td>${escapeHtml(booking.dob)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Consent Date</td><td>${escapeHtml(booking.consentDate)}</td></tr>
       </table>
       <h3>Tattoo Description</h3>
-      <p>${booking.tattooDescription}</p>
+      <p>${escapeHtml(booking.tattooDescription)}</p>
       <p style="color:#888;font-size:12px">Consent form, photo ID, and reference photos are attached.</p>
     `,
     attachments: emailAttachments,
