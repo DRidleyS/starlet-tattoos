@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 
 type Item = { paper: string };
 
@@ -59,12 +58,11 @@ export default function FlashGallery({ items }: { items: Item[] }) {
                       transformOrigin: "center center",
                     }}
                   >
-                    <Image
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
                       src={it.paper}
                       alt={`flash-${idx}`}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width:640px) 256px, (max-width:1024px) 288px, 320px"
+                      className="absolute inset-0 w-full h-full object-cover"
                     />
                   </div>
 
