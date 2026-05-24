@@ -270,7 +270,7 @@ export default function Home() {
         {/* Video carousel (only renders if videos exist) */}
         <VideoCarousel items={videoItems} />
         {/* Mini gallery preview with tabs for Gallery / Flash Designs */}
-        <section className="w-full flex flex-col items-center mt-10 sm:mt-14">
+        <section className="w-full flex flex-col items-center mt-20 sm:mt-28">
           <div className="w-full max-w-5xl">
             <div className="w-full flex justify-center">
               <div className="flex gap-6 mt-8 sm:mt-10">
