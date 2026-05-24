@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 type Item = { paper: string; onBody: string; alt?: string };
 
@@ -369,7 +370,7 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
             onClick={closeOverlay}
             aria-label="Close overlay"
           >
-            ✕
+            <X size={28} strokeWidth={2.5} aria-hidden />
           </button>
           <button
             className="hc-nav hc-nav-left"
@@ -381,7 +382,7 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
             }}
             aria-label="Previous"
           >
-            ◀
+            <ChevronLeft size={36} strokeWidth={2.5} aria-hidden />
           </button>
           <button
             className="hc-nav hc-nav-right"
@@ -391,7 +392,7 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
             }}
             aria-label="Next"
           >
-            ▶
+            <ChevronRight size={36} strokeWidth={2.5} aria-hidden />
           </button>
           <img
             src={items[selected].onBody || items[selected].paper}

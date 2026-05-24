@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
 import SignaturePad from "signature_pad";
 import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Home } from "lucide-react";
 
 const ACCENT = "#b76e79";
 
@@ -935,40 +936,11 @@ export default function BookingFunnel() {
     </BouncyButton>
   );
 
-  const ArrowLeftIcon = (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M15 18l-6-6 6-6"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  const ArrowLeftIcon = <ChevronLeft size={18} aria-hidden />;
 
-  const ArrowRightIcon = (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 6l6 6-6 6"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  const ArrowRightIcon = <ChevronRight size={18} aria-hidden />;
 
-  const HomeIcon = (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 11.5L12 4l8 7.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-8.5Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  const HomeIcon = <Home size={18} aria-hidden />;
 
   const hintForStep = (id: (typeof steps)[number]["id"]) => {
     switch (id) {

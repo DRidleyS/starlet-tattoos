@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import HoneycombGallery from "@/components/HoneycombGallery";
 import FlashGallery from "@/components/FlashGallery";
+import VideoCarousel from "@/components/VideoCarousel";
 import VineTopFrame from "@/components/VineTopFrame";
 import VineMainDivider from "@/components/VineMainDivider";
 import BookNowLauncher from "@/components/BookNowLauncher";
@@ -107,6 +108,9 @@ export default function Home() {
   const [ageDenied, setAgeDenied] = useState(false);
   const [galleryItems, setGalleryItems] = useState(FALLBACK_GALLERY);
   const [flashItems, setFlashItems] = useState(FALLBACK_FLASH);
+  const [videoItems, setVideoItems] = useState<
+    { id: string; video_url: string; title?: string | null }[]
+  >([]);
 
   // Fetch dynamic gallery images (falls back to hardcoded if API unavailable)
   useEffect(() => {
@@ -125,6 +129,24 @@ export default function Home() {
         if (gallery.length > 0) setGalleryItems(gallery);
         if (flash.length > 0) setFlashItems(flash);
       })
+      .catch(() => {});
+
+    fetch("/api/videos")
+      .then((r) => r.json())
+      .then(
+        (
+          all: {
+            id: string;
+            video_url: string;
+            title: string | null;
+            sort_order: number;
+          }[]
+        ) => {
+          if (!Array.isArray(all)) return;
+          const sorted = [...all].sort((a, b) => a.sort_order - b.sort_order);
+          setVideoItems(sorted);
+        }
+      )
       .catch(() => {});
   }, []);
 
@@ -245,6 +267,8 @@ export default function Home() {
           </div>
         </div>
         {/* Next sections: intro, featured artist, mini gallery, etc. */}
+        {/* Video carousel (only renders if videos exist) */}
+        <VideoCarousel items={videoItems} />
         {/* Mini gallery preview with tabs for Gallery / Flash Designs */}
         <section className="w-full flex flex-col items-center mt-10 sm:mt-14">
           <div className="w-full max-w-5xl">
