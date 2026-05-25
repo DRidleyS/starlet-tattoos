@@ -30,7 +30,7 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
   };
 
   return (
-    <section className="w-full flex justify-center mt-6 sm:mt-10">
+    <section className="w-full flex justify-center mt-6 sm:mt-10 mb-10 sm:mb-16">
       <div className="relative w-full max-w-6xl px-4">
         <div className="relative flex items-center justify-center gap-3 sm:gap-5">
           {/* prev peek */}
@@ -60,9 +60,8 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
               src={items[active].video_url}
               autoPlay
               muted
-              loop
               playsInline
-              controls
+              onEnded={() => go(1)}
               className="w-full h-full object-cover"
             />
             {items[active].title && (
