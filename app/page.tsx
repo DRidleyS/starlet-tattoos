@@ -272,7 +272,7 @@ export default function Home() {
         {/* Explicit breathing room between the video carousel and the
             Gallery / Flash Designs tabs. Using an aria-hidden spacer instead
             of relying on margins so it can't be collapsed/overridden. */}
-        <div className="w-full h-32 sm:h-48" aria-hidden />
+        <div className="w-full h-16 sm:h-14" aria-hidden />
         {/* Mini gallery preview with tabs for Gallery / Flash Designs */}
         <section className="w-full flex flex-col items-center">
           <div className="w-full max-w-5xl">
