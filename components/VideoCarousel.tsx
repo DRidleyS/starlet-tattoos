@@ -15,6 +15,14 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
   // Play the active video, pause + rewind the others. Because every <video>
   // stays mounted with preload="auto", switching is instant — no remount, no
   // black flash while the next file fetches.
+  const playActive = () => {
+    const v = videoRefs.current[active];
+    if (!v) return;
+    v.muted = true;
+    const p = v.play();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  };
+
   useEffect(() => {
     videoRefs.current.forEach((v, i) => {
       if (!v) return;
@@ -30,6 +38,22 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
       }
     });
   }, [active, items]);
+
+  // When the tab/window regains focus, browsers often leave the active <video>
+  // paused. Re-kick playback so it doesn't appear frozen.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") playActive();
+    };
+    const onFocus = () => playActive();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   if (!items || items.length === 0) return null;
 

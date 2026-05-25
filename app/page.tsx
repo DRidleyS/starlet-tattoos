@@ -269,8 +269,12 @@ export default function Home() {
         {/* Next sections: intro, featured artist, mini gallery, etc. */}
         {/* Video carousel (only renders if videos exist) */}
         <VideoCarousel items={videoItems} />
+        {/* Explicit breathing room between the video carousel and the
+            Gallery / Flash Designs tabs. Using an aria-hidden spacer instead
+            of relying on margins so it can't be collapsed/overridden. */}
+        <div className="w-full h-32 sm:h-48" aria-hidden />
         {/* Mini gallery preview with tabs for Gallery / Flash Designs */}
-        <section className="w-full flex flex-col items-center mt-20 sm:mt-28">
+        <section className="w-full flex flex-col items-center">
           <div className="w-full max-w-5xl">
             <div className="w-full flex justify-center">
               <div className="flex gap-6 mt-8 sm:mt-10">
