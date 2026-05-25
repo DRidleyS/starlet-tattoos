@@ -6,18 +6,29 @@ type Video = { id: string; video_url: string; title?: string | null };
 
 export default function VideoCarousel({ items }: { items: Video[] }) {
   const [active, setActive] = useState(0);
-  const featuredRef = useRef<HTMLVideoElement | null>(null);
+  const videoRefs = useRef<Array<HTMLVideoElement | null>>([]);
 
   useEffect(() => {
     if (active >= items.length) setActive(0);
   }, [items.length, active]);
 
+  // Play the active video, pause + rewind the others. Because every <video>
+  // stays mounted with preload="auto", switching is instant — no remount, no
+  // black flash while the next file fetches.
   useEffect(() => {
-    const v = featuredRef.current;
-    if (!v) return;
-    v.muted = true;
-    const p = v.play();
-    if (p && typeof p.catch === "function") p.catch(() => {});
+    videoRefs.current.forEach((v, i) => {
+      if (!v) return;
+      v.muted = true;
+      if (i === active) {
+        const p = v.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } else {
+        try {
+          v.pause();
+          v.currentTime = 0;
+        } catch {}
+      }
+    });
   }, [active, items]);
 
   if (!items || items.length === 0) return null;
@@ -30,7 +41,7 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
   };
 
   return (
-    <section className="w-full flex justify-center mt-6 sm:mt-10 mb-10 sm:mb-16">
+    <section className="w-full flex justify-center mt-6 sm:mt-10 mb-24 sm:mb-32">
       <div className="relative w-full max-w-6xl px-4">
         <div className="relative flex items-center justify-center gap-3 sm:gap-5">
           {/* prev peek */}
@@ -38,34 +49,42 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
             <button
               onClick={() => setActive(prevIdx)}
               aria-label="Previous video"
-              className="hidden sm:block flex-shrink-0 w-[14%] aspect-[9/16] rounded-xl overflow-hidden opacity-50 hover:opacity-80 transition"
+              className="hidden sm:block flex-shrink-0 w-[14%] aspect-[9/16] rounded-xl overflow-hidden opacity-50 hover:opacity-80 transition bg-black"
             >
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              {/* Mirror the active video element so the peek shows the real
+                  first frame instantly without loading a second copy. */}
               <video
                 src={items[prevIdx].video_url}
                 muted
                 playsInline
-                preload="metadata"
-                className="w-full h-full object-cover"
+                preload="auto"
+                className="w-full h-full object-cover pointer-events-none"
               />
             </button>
           )}
 
-          {/* featured */}
+          {/* featured — all videos stay mounted, only the active one is visible */}
           <div className="flex-1 max-w-3xl aspect-video sm:aspect-[16/10] rounded-2xl overflow-hidden bg-black shadow-[0_25px_60px_rgba(0,0,0,0.25)] relative">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video
-              key={items[active].id}
-              ref={featuredRef}
-              src={items[active].video_url}
-              autoPlay
-              muted
-              playsInline
-              onEnded={() => go(1)}
-              className="w-full h-full object-cover"
-            />
+            {items.map((it, i) => (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <video
+                key={it.id}
+                ref={(el) => {
+                  videoRefs.current[i] = el;
+                }}
+                src={it.video_url}
+                muted
+                playsInline
+                preload="auto"
+                onEnded={i === active ? () => go(1) : undefined}
+                className={
+                  "absolute inset-0 w-full h-full object-cover transition-opacity duration-150 " +
+                  (i === active ? "opacity-100 z-10" : "opacity-0 z-0")
+                }
+              />
+            ))}
             {items[active].title && (
-              <div className="absolute left-3 bottom-3 text-white/90 text-xs sm:text-sm font-medium drop-shadow">
+              <div className="absolute left-3 bottom-3 text-white/90 text-xs sm:text-sm font-medium drop-shadow z-20">
                 {items[active].title}
               </div>
             )}
@@ -76,15 +95,14 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
             <button
               onClick={() => setActive(nextIdx)}
               aria-label="Next video"
-              className="hidden sm:block flex-shrink-0 w-[14%] aspect-[9/16] rounded-xl overflow-hidden opacity-50 hover:opacity-80 transition"
+              className="hidden sm:block flex-shrink-0 w-[14%] aspect-[9/16] rounded-xl overflow-hidden opacity-50 hover:opacity-80 transition bg-black"
             >
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 src={items[nextIdx].video_url}
                 muted
                 playsInline
-                preload="metadata"
-                className="w-full h-full object-cover"
+                preload="auto"
+                className="w-full h-full object-cover pointer-events-none"
               />
             </button>
           )}
