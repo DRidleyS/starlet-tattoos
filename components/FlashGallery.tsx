@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 type Item = { paper: string };
 
@@ -15,6 +16,38 @@ export default function FlashGallery({ items }: { items: Item[] }) {
   } as React.CSSProperties;
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+
+  const closeOverlay = () => setSelected(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeOverlay();
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        setSelected((prev) =>
+          prev === null ? null : (prev - 1 + items.length) % items.length,
+        );
+      }
+      if (e.key === "ArrowRight") {
+        setSelected((prev) =>
+          prev === null ? null : (prev + 1) % items.length,
+        );
+      }
+    };
+    if (selected !== null) {
+      document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", onKey);
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [selected, items.length]);
 
   return (
     <div className="w-full flex justify-center mt-12">
@@ -52,17 +85,26 @@ export default function FlashGallery({ items }: { items: Item[] }) {
                   onMouseLeave={() => setHoveredIndex(null)}
                 >
                   <div
-                    className="relative bg-white w-64 md:w-72 lg:w-72 h-64 md:h-72 lg:h-72 p-3 shadow-2xl border border-slate-200 transition-transform duration-300 will-change-transform"
+                    className="relative bg-white w-64 md:w-72 lg:w-72 h-64 md:h-72 lg:h-72 p-3 shadow-2xl border border-slate-200 transition-transform duration-300 will-change-transform cursor-pointer"
                     style={{
                       transform: isHovered ? hoveredTransform : baseTransform,
                       transformOrigin: "center center",
+                    }}
+                    onClick={() => setSelected(idx)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelected(idx);
+                      }
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={it.paper}
                       alt={`flash-${idx}`}
-                      className="absolute inset-0 w-full h-full object-cover"
+                      className="absolute inset-0 w-full h-full object-contain"
                     />
                   </div>
 
@@ -106,6 +148,152 @@ export default function FlashGallery({ items }: { items: Item[] }) {
           <div className="h-16 md:h-28 lg:h-40" />
         </div>
       </div>
+
+      {selected !== null && (
+        <div
+          className="fg-overlay"
+          onClick={closeOverlay}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            className="fg-close"
+            onClick={closeOverlay}
+            aria-label="Close overlay"
+          >
+            <X size={28} strokeWidth={2.5} aria-hidden />
+          </button>
+          <button
+            className="fg-nav fg-nav-left"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected((s) =>
+                s === null ? null : (s - 1 + items.length) % items.length,
+              );
+            }}
+            aria-label="Previous"
+          >
+            <ChevronLeft size={36} strokeWidth={2.5} aria-hidden />
+          </button>
+          <button
+            className="fg-nav fg-nav-right"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected((s) => (s === null ? null : (s + 1) % items.length));
+            }}
+            aria-label="Next"
+          >
+            <ChevronRight size={36} strokeWidth={2.5} aria-hidden />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={items[selected].paper}
+            alt={`flash-${selected}`}
+            className="fg-img"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      <style jsx>{`
+        .fg-overlay {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.78);
+          z-index: 1100;
+        }
+        .fg-img {
+          max-width: 92vw;
+          max-height: 92vh;
+          width: auto;
+          height: auto;
+          object-fit: contain;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+          border-radius: 6px;
+        }
+        .fg-close {
+          position: fixed;
+          right: 28px;
+          top: 24px;
+          z-index: 1110;
+          background: rgba(255, 255, 255, 0.06);
+          color: #fff;
+          border: none;
+          font-size: 22px;
+          padding: 8px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          backdrop-filter: blur(6px);
+        }
+        .fg-nav {
+          position: fixed;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 1110;
+          width: 56px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.06),
+            rgba(255, 255, 255, 0.02)
+          );
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          cursor: pointer;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+          transition:
+            transform 180ms ease,
+            background 180ms ease,
+            box-shadow 180ms ease;
+          backdrop-filter: blur(6px);
+        }
+        .fg-nav:active {
+          transform: translateY(-50%) scale(0.96);
+        }
+        .fg-nav:hover {
+          transform: translateY(-50%) scale(1.03);
+          box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+        }
+        .fg-nav-left {
+          left: 22px;
+        }
+        .fg-nav-right {
+          right: 22px;
+        }
+        .fg-nav:hover,
+        .fg-nav:focus {
+          background: linear-gradient(
+            180deg,
+            rgba(254, 243, 199, 0.12),
+            rgba(254, 243, 199, 0.06)
+          );
+          color: #111827;
+          border-color: rgba(250, 204, 21, 0.18);
+        }
+        @media (max-width: 640px) {
+          .fg-nav {
+            width: 44px;
+            height: 44px;
+          }
+          .fg-nav-left {
+            left: 12px;
+          }
+          .fg-nav-right {
+            right: 12px;
+          }
+          .fg-close {
+            right: 12px;
+            top: 12px;
+          }
+        }
+      `}</style>
     </div>
   );
 }
