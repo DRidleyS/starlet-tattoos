@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase-server";
 import { generateConsentForm } from "@/lib/generate-consent-form";
 import { sendBookingEmail } from "@/lib/send-booking-email";
 
+// PDF + image generation depend on the Node.js runtime (sharp / pdf-lib).
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
@@ -95,12 +98,12 @@ export async function POST(req: NextRequest) {
     {
       const { error } = await supabase.storage
         .from("booking-uploads")
-        .upload(`${bookingId}/consent-form.png`, consentFormBuffer, {
-          contentType: "image/png",
+        .upload(`${bookingId}/consent-form.pdf`, consentFormBuffer, {
+          contentType: "application/pdf",
           upsert: true,
         });
       if (error) throw new Error(`Upload failed: ${error.message}`);
-      consentFormUrl = `${bookingId}/consent-form.png`;
+      consentFormUrl = `${bookingId}/consent-form.pdf`;
     }
 
     // Store booking in database

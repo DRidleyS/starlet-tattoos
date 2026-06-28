@@ -106,7 +106,7 @@ export default function BookingDetail({
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {consentFormUrl && (
-            <ImageCard label="Consent Form" src={consentFormUrl} />
+            <DocCard label="Consent Form (PDF)" src={consentFormUrl} />
           )}
           {photoIdUrl && <ImageCard label="Photo ID" src={photoIdUrl} />}
           {initialsUrl && <ImageCard label="Initials" src={initialsUrl} />}
@@ -190,6 +190,36 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs text-neutral-500 uppercase">{label}</p>
       <p className="text-neutral-200">{value || "—"}</p>
+    </div>
+  );
+}
+
+function DocCard({ label, src }: { label: string; src: string }) {
+  return (
+    <div className="bg-neutral-800 rounded-lg overflow-hidden flex flex-col">
+      <p className="text-xs text-neutral-500 px-3 pt-2">{label}</p>
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex flex-1 items-center justify-center gap-2 p-6 text-rose-300 hover:text-rose-200 transition"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+        <span className="text-sm font-medium">View / download</span>
+      </a>
     </div>
   );
 }

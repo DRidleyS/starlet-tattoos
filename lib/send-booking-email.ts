@@ -34,7 +34,7 @@ export async function sendBookingEmail(
 ) {
   const emailAttachments: { filename: string; content: Buffer }[] = [
     {
-      filename: `${booking.fullName.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}_consent_form.png`,
+      filename: `${booking.fullName.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}_consent_form.pdf`,
       content: Buffer.from(attachments.consentForm),
     },
   ];

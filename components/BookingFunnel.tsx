@@ -5,6 +5,7 @@ import { gsap } from "gsap";
 import SignaturePad from "signature_pad";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Home } from "lucide-react";
+import { CONSENT_ITEMS } from "@/lib/consent-content";
 
 const ACCENT = "#b76e79";
 
@@ -159,54 +160,6 @@ function resizeImage(
   });
 }
 
-
-const CONSENT_ITEMS: Array<{ key: string; text: string }> = [
-  {
-    key: "notUnderInfluence",
-    text: "I am not under the influence of drugs or alcohol.",
-  },
-  { key: "notPregnant", text: "I am not pregnant." },
-  {
-    key: "noCommunicableDisease",
-    text: "I acknowledge I am free of communicable disease.",
-  },
-  {
-    key: "over18",
-    text: "I am over the age of 18 (legal age of consent in California).",
-  },
-  {
-    key: "noIrritatedSkin",
-    text: "I do not have acne, freckles, moles, or sunburn in the area to be tattooed.",
-  },
-  {
-    key: "designApproved",
-    text: "I understand and have viewed my design and give consent.",
-  },
-  {
-    key: "allergiesDisclosed",
-    text: "I acknowledge that I have truthfully represented any existing allergies.",
-  },
-  {
-    key: "infectionRiskUnderstood",
-    text: "I acknowledge infection risk and aftercare instructions.",
-  },
-  {
-    key: "permanentChangeUnderstood",
-    text: "I understand obtaining a tattoo is a permanent change.",
-  },
-  {
-    key: "choiceAndConsent",
-    text: "I acknowledge this is my choice and I consent to the tattoo.",
-  },
-  {
-    key: "inksNotFdaApproved",
-    text: "I acknowledge inks/dyes are not FDA approved.",
-  },
-  {
-    key: "lightheadedRiskUnderstood",
-    text: "I acknowledge the chance of feeling lightheaded or dizzy.",
-  },
-];
 
 function todayISO() {
   const d = new Date();
