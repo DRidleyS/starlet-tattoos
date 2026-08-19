@@ -81,7 +81,7 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
                 src={items[prevIdx].video_url}
                 muted
                 playsInline
-                preload="auto"
+                preload="metadata"
                 className="w-full h-full object-cover pointer-events-none"
               />
             </button>
@@ -98,7 +98,7 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
                 src={it.video_url}
                 muted
                 playsInline
-                preload="auto"
+                preload={i === active ? "auto" : "metadata"}
                 onEnded={i === active ? () => go(1) : undefined}
                 className={
                   "absolute inset-0 w-full h-full object-cover transition-opacity duration-150 " +
@@ -124,7 +124,7 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
                 src={items[nextIdx].video_url}
                 muted
                 playsInline
-                preload="auto"
+                preload="metadata"
                 className="w-full h-full object-cover pointer-events-none"
               />
             </button>

@@ -51,7 +51,10 @@ export default function FlashGallery({ items }: { items: Item[] }) {
 
   return (
     <div className="w-full flex justify-center mt-12">
-      <div className="relative w-full rounded-lg p-40" style={accentBackground}>
+      <div
+        className="relative w-full rounded-lg p-8 sm:p-20 lg:p-40"
+        style={accentBackground}
+      >
         {/* subtle vignette */}
         <div
           className="absolute inset-0 pointer-events-none"
