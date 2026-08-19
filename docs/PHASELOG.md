@@ -22,6 +22,7 @@
 - [complete]    C1 :: Abuse & brute-force protection DONE (VERIFIED: limiter watched firing). New lib/rate-limit.ts (in-process sliding window, fails open everywhere) applied to POST /api/bookings (5/hr/IP, checked before body parse), POST /api/healed-photos (10/hr/IP), and the admin-login failure path (10 failed attempts/15min/IP; only failures count, success clears, gate SKIPPED when no real IP so a stranger can't lock out the owner). Dev proof: 7 rapid booking POSTs -> 1-5 passed to validation (400), 6 returned 429 + Retry-After 3600, 7 stayed 429. Limitation documented: per-instance, not distributed; swap point is hit()/peek(). Narrative: wave-c.md.
 - [complete]    C2 :: Security headers DONE (VERIFIED in dev, LAYOUT INTACT). next.config.ts adds Permissions-Policy (camera/mic/geo/payment/usb off - safe, funnel uses plain file inputs, no capture attr), HSTS max-age=63072000 includeSubDomains PRODUCTION-ONLY (localhost HSTS would force https on dev), and Content-Security-Policy-REPORT-ONLY (cannot block anything; 'unsafe-inline' needed for Next hydration + styled-jsx/framer/GSAP; unsafe-eval+ws dev-only). Verified on the wire: report-only present, enforcing CSP null, HSTS absent in dev. Layout: desktop no overflow + 158 CSS rules + 4 styled-jsx blocks + fonts resolved; mobile 375 overflowPx 0 / zero offenders; lightbox + canvas-toDataURL + booking funnel all fine; ZERO CSP violations. Narrative: wave-c.md.
 - [complete]    C3 :: Dependency hardening DONE. package.json next-auth "^5.0.0-beta.30" -> exact "5.0.0-beta.30" (the installed, working version), so a plain npm install can no longer pull a newer BETA into the live admin auth gate unchosen. No-op today, guardrail tomorrow; stable-v5 upgrade stays a deliberate future task. check+build green. Narrative: wave-c.md.
+- [complete]    D1 :: FIRST PUSH TO PRODUCTION + LIVE VERIFICATION + MOBILE SCROLL FIX. User greenlit the push ("id like you to push now, and then i want you to use chrome to verify you didnt break anything"). Pushed 661a713..efe0723 (16 commits), Vercel Ready in 26s; then caa97b1 for the mobile fix, Ready in 27s. VERIFIED LIVE against real Supabase data for the first time: 47/47 gallery images loaded (zero failures), 23 honeycomb cells all imaged + keyboard-accessible + alt-texted, OpenGraph/Twitter/title-template all present with absolute URLs, admin deep-link correctly bounces to login carrying callbackUrl, and ZERO CSP violations + zero site console errors across the scrolled homepage and the booking funnel (the measurement ledger r was waiting for). MOBILE FIX: first load now pins to the top (bug was not reproducible in an emulated viewport, so the top is re-asserted across the window where scroll-restoration / min-h-svh / late media reflow settle), plus preventScroll on the age-gate focus; back/forward is skipped and the first wheel/touch/key releases it so it never fights a reader. NOT verified: the signed-in admin surface (no session in that browser profile; signing in on the user's behalf is out of bounds) and a real booking submission. TWO FINDINGS RAISED, ledger (u) videos are .mov and Chrome cannot play them at all, (v) Vercel warns builds fail after 2026-09-30 on Node 20. Narrative: wave-d.md.
 <!-- PHASE-BOARD-END -->
 
 ### Wave index
@@ -126,6 +127,12 @@
   not prod (next dev differs from a real build) and local dev has no Supabase data, so image/media/
   connect to *.supabase.co was never exercised. Sequence: ship report-only to prod, let it run
   against real traffic + real Supabase content, review reported violations, THEN enforce.
+  STEP 2 DONE 2026-08-19 (D1): report-only is now LIVE in production and was measured against real
+  Supabase images and videos - homepage scrolled end to end plus the booking funnel produced ZERO
+  violations and zero site console errors. STILL NOT MEASURED: the signed-in admin surface (no admin
+  session was available) and any real booking submission. So the remaining prerequisite for flipping
+  the key to the enforcing "Content-Security-Policy" is a pass through the admin portal and one real
+  booking with the console open. Do not flip on the strength of the public pages alone.
 - (q) PROJECT (verification boundary for wave B, 2026-08-19): B1 (admin error-handling) and B4 (API
   validation) can't be browser-verified locally - the admin portal needs an authenticated session
   and the API routes need Supabase env vars, neither present in local dev (the /api/gallery + /api/
@@ -155,6 +162,20 @@
   by loading the file through Next's own `@next/env` and printing the parsed value rather than
   theorizing. Relevant to the user directly: putting a real ADMIN_PASSWORD_HASH in any local env file
   hits this.
+- (u) PROJECT (found in production 2026-08-19, PRE-EXISTING, NOT caused by any of our changes): the
+  homepage videos DO NOT PLAY IN CHROME. They are `.mov` files served as `video/quicktime`, and Chrome
+  reports `canPlayType('video/quicktime')` = "" (NOT SUPPORTED) in every form INCLUDING H.264-in-.mov;
+  navigating straight to the file URL triggers a DOWNLOAD instead of playback, which bypasses all our
+  code and proves the container is the cause. Symptom: video elements sit at readyState 0 with 0x0
+  dimensions and render black. They likely play in Safari, which is why this may never have been
+  noticed. REAL FIX: re-upload as MP4 (H.264) - on iPhone, Settings > Camera > Formats > "Most
+  Compatible", or export/convert to .mp4. NOTE the B4 upload whitelist still accepts "mov" on purpose:
+  removing it would only rename QuickTime bytes to .mp4, which is a lying extension, not a fix.
+  Transcoding on upload is the only code-side solution and is a real feature, not a patch. USER'S CALL.
+- (v) INFRA (seen on the Vercel dashboard 2026-08-19): "Action Required - You have 1 project using
+  Node.js 20 or older. New builds will fail starting September 30, 2026." Not verified WHICH project
+  (the account also holds e-capture). Deploys succeed today; this is a dated future breakage. USER'S
+  CALL - it is a Vercel project setting, i.e. production infra.
 - (p) HARNESS (the decisive break, measured 2026-08-19 ~04:xx): the autonomous loop CANNOT cross the
   context ceiling on this stack without the user. Three cron fires in a row measured 79.6% -> 81.6%
   -> 94.9% -> 95.9%, climbing ~4k per fire, and NO reset fired at the ~380k point I expected. Refined
@@ -213,7 +234,32 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~12:50: **B4 CLOSED** - THE BOARD IS NOW EMPTY. Every phase A1/A1b/A2/B1-B6/C1-C3
+*Stamp 2026-08-19 ~13:15: **D1 CLOSED** - EVERYTHING IS NOW LIVE IN PRODUCTION. The user greenlit the
+push; waves A-C plus a mobile fix are deployed to www.starlettattoos.ink. Board is empty again. What a
+fresh context cannot re-derive:*
+
+- ***THE STANDING "NEVER PUSH" RULE WAS LIFTED FOR THIS ONE ACT ONLY.*** *The user said "id like you
+  to push now". That was permission for THAT push, not a standing change - go back to committing
+  locally and waiting for their word unless they say otherwise.*
+- ***DO NOT RE-DIAGNOSE THE "EMPTY HEXAGONS".*** *The live gallery LOOKS like it has many blank
+  honeycomb cells. It does not. Measured twice: only 23 hex-shaped elements exist in the DOM, ALL 23
+  contain a loaded image, and 47/47 images on the page loaded with zero failures. The surrounding
+  honeycomb is a DECORATIVE BACKGROUND PATTERN. A screenshot alone will mislead you here.*
+- *THE VIDEOS ARE BROKEN IN CHROME AND ALWAYS WERE (ledger u). `.mov` / `video/quicktime`, which
+  Chrome cannot decode in ANY form - proven by opening the file URL directly (it downloads instead of
+  playing), which bypasses all our code. NOT caused by B6's preload change. Fix is re-uploading MP4.*
+- *CSP report-only is measured in production with ZERO violations across the public pages (ledger r
+  updated). The admin surface and a real booking are still unmeasured, and both must be checked before
+  anyone flips the header to enforcing.*
+- *The mobile scroll fix could NOT be reproduced in an emulated viewport, so it is defensive rather
+  than targeted: it re-asserts the top at 0/50/250/600ms, skips back/forward navigation, and releases
+  on the first wheel/touch/key. If the user reports it still happens on a real device, the next step
+  is a real-device debug session, NOT more timers.*
+- *Dev server running on port 3000 (serverId f5c2ee5c-a8e9-44c4-a09e-072df973f0d8). The B1 .env.local
+  (invented auth values, gitignored) is still present. The Browser pane viewport was left at MOBILE
+  375x812 - reset it before desktop checks.*
+
+*(prior stamp, still accurate:) Stamp 2026-08-19 ~12:50: **B4 CLOSED** - THE BOARD IS NOW EMPTY. Every phase A1/A1b/A2/B1-B6/C1-C3
 is complete; there is NO pending or proposed row left, so the loop STOPS here and waits for the human.
 Do NOT invent new phases without the user asking. Committed locally, NOT pushed. What a fresh context
 cannot re-derive:*
