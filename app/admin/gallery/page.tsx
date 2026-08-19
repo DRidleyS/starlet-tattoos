@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { prepareVideoForUpload } from "@/lib/video-remux";
 
 type GalleryImage = {
   id: string;
@@ -38,6 +39,7 @@ export default function GalleryAdminPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -97,11 +99,23 @@ export default function GalleryAdminPage() {
   };
 
   const uploadVideo = async (file: File) => {
+    // Phone recordings arrive as QuickTime, which Chrome refuses to play even
+    // though the H.264 inside is perfectly decodable. This rewrites the
+    // container to MP4 (no re-encoding) and refuses anything that still would
+    // not play, so an unplayable video can never reach the live homepage.
+    setPreparing(true);
+    let prepared;
+    try {
+      prepared = await prepareVideoForUpload(file);
+    } finally {
+      setPreparing(false);
+    }
+
     // 1) get signed upload url
     const urlRes = await fetch("/api/videos/upload-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: file.name }),
+      body: JSON.stringify({ filename: prepared.filename }),
     });
     if (!urlRes.ok) throw new Error("Failed to get upload url");
     const { id, path, signedUrl, publicUrl } = (await urlRes.json()) as {
@@ -115,7 +129,10 @@ export default function GalleryAdminPage() {
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", signedUrl, true);
-      xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+      // THE header that decides whether Chrome will play this: sending the
+      // file's own "video/quicktime" is exactly what made the existing videos
+      // unplayable, so the prepared type is used instead.
+      xhr.setRequestHeader("Content-Type", prepared.contentType);
       xhr.setRequestHeader("x-upsert", "true");
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -127,7 +144,7 @@ export default function GalleryAdminPage() {
         else reject(new Error(`Upload failed: ${xhr.status}`));
       };
       xhr.onerror = () => reject(new Error("Network error during upload"));
-      xhr.send(file);
+      xhr.send(prepared.blob);
     });
 
     // 3) record row
@@ -260,7 +277,9 @@ export default function GalleryAdminPage() {
     }
   };
 
-  const uploadLabel = uploading
+  const uploadLabel = preparing
+    ? "Checking video..."
+    : uploading
     ? uploadProgress !== null
       ? `Uploading ${uploadProgress}%`
       : "Uploading..."

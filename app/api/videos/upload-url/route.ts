@@ -6,7 +6,15 @@ import { auth } from "@/lib/auth";
 // extension is chosen from a fixed list rather than taken from the caller's
 // filename. Anything else would make the studio's own domain a host for
 // arbitrary files.
-const VIDEO_EXTENSIONS = ["mp4", "mov", "webm", "m4v"];
+//
+// `mov` is deliberately ABSENT. The admin uploader now rewrites QuickTime to
+// MP4 before uploading (lib/video-remux.ts), so a .mov arriving here means that
+// step was bypassed — and storing it would put a video on the homepage that
+// Chrome renders as a black rectangle. Refused by name rather than quietly
+// renamed to .mp4, because an extension that misdescribes its own bytes is how
+// this problem started.
+const VIDEO_EXTENSIONS = ["mp4", "webm", "m4v"];
+const QUICKTIME_EXTENSIONS = ["mov", "qt"];
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -24,6 +32,15 @@ export async function POST(req: NextRequest) {
     const requested = (filename?.split(".").pop() || "")
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
+    if (QUICKTIME_EXTENSIONS.includes(requested)) {
+      return NextResponse.json(
+        {
+          error:
+            "QuickTime video can't be published as-is — most browsers refuse to play it. Please re-choose the file so it can be converted, or upload an MP4.",
+        },
+        { status: 400 }
+      );
+    }
     const ext = VIDEO_EXTENSIONS.includes(requested) ? requested : "mp4";
     const id = crypto.randomUUID();
     const path = `${id}.${ext}`;
