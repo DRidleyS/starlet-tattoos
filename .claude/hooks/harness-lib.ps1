@@ -275,12 +275,16 @@ function Get-HarnessResumeVerdict {
 # THE REGEX IS SAFE AGAINST ITS OBVIOUS TRAP: '"input_tokens":' requires a quote IMMEDIATELY before
 # the name, so it cannot match inside '"cache_creation_input_tokens"'. Checked, not assumed.
 #
-# PORT: 400000, MEASURED ON THIS PROJECT 2026-08-19 - not the source install's 1,000,000. The
-# built-in auto-compaction fired at 380,519 tokens in this project's own transcript
-# (b2d5b0f4...jsonl, max usage total immediately before the compact boundary), so the effective
-# window on this plan/model is ~400k and the gates must scale to it. Re-measure at the next real
-# auto-compaction if the model or plan changes; do not assume.
-$HarnessWindowTokens = 400000   # measured from a real auto-compaction, not assumed
+# CORRECTED 2026-08-19: the 400000 figure below was WRONG and cost several turns of needless
+# deferral. It came from a 380,519-token "compact boundary" in transcript b2d5b0f4 that I later
+# realised was a MANUAL /compact (this session opened with one), NOT the built-in auto-compaction.
+# DISPROOF, measured directly: this session ran to 413,324 tokens - reads, edits, a full next build,
+# and commits - with NO reset and no degradation. So the real window is well above 413k. Reverted to
+# the source model's known-measured 1,000,000 as the best available estimate (Fable 5 is comparable),
+# ANNOTATED as provisional: re-measure $HarnessWindowTokens the FIRST time a genuine built-in
+# auto-compaction is observed on this stack (the max usage total on the last assistant row before the
+# compact boundary), and pin that. Until then the gates run conservative-but-not-insane against 1M.
+$HarnessWindowTokens = 1000000   # provisional: 400k was disproven (ran past it); re-measure at a real auto-compaction
 
 # THE FOUR THRESHOLDS, IN ONE PLACE so the hook and the UI cannot drift apart.
 $HarnessCompactAtPct = 32   # at a phase BOUNDARY: the next phase would start a third full
