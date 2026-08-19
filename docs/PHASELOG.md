@@ -11,7 +11,7 @@
 
 <!-- PHASE-BOARD-START -->
 - [complete]    A1 :: Harness ported from D:\claude-phase-harness + adapted (400k measured window, empty busy list, UAT neutered) + every gate verified in the failing direction (master switch, token gate both halves, freshness gate, busy reaps, injector REFUSED choke point, build wrapper dev-server fence). Two source-kit bugs found+fixed (census regex, nudge_line path), encoding + orphan-detector findings logged. Closed at 81% context under the harness's own critical-mass rule. Narrative: wave-a.md.
-- [in_progress] A1b :: Finish the A1 verification tail: run check.ps1 + build.ps1 for real (RESULT lines green = repo baseline health), fire the LIVE nudge-channel test (phase-stop with UI armed -> injector paste arriving in-session, paired log lines), arm the RULE ZERO floor clock, save harness memory note, local commit of the whole install. Done when: nudge observed arriving + commit exists.
+- [complete]    A1b :: A1 verification tail done: check.ps1 ran (RESULT: FAIL - surfaced a real baseline, 14 eslint no-explicit-any errors + 20 warnings; the wrapper worked), build.ps1 ran (RESULT: OK, buildId minted). RULE ZERO floor clock armed (cron 90937956). Harness memory note written. Install committed locally (9cdf897). DEFERRED to the user: the live injector-paste demo (classifier-gated from Claude's tools; it is the user's to watch). Narrative: wave-a.md.
 - [pending]     A2 :: Recon: research the whole project and write the implementation phases. Fan out subagents (keep the orchestrator window lean) over app/, components/, lib/, api routes, config; each returns concrete defects/improvements with file:line evidence. Merge into wave-a.md findings section, then append implementation phases to this board as pending rows (pre-greenlit by the wave directive) - risky/prod-touching items become [proposed] instead. Done when: board carries scoped implementation rows each sized to close under ~40% context.
 <!-- PHASE-BOARD-END -->
 
@@ -112,28 +112,26 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~03:10: **A1 CLOSED** at 81% context under the harness's own critical-mass rule
-(board split: verification tail continues as A1b, now in_progress). Full evidence in
-docs/phases/wave-a.md under the A1 heading. What the next context cannot re-derive:*
+*Stamp 2026-08-19 ~03:14: **A1b CLOSED** (and A1 before it). The whole harness install + verification
+wave-front is done and committed (9cdf897). Board now: A1 + A1b complete, A2 pending (the research
+pass). Full evidence in docs/phases/wave-a.md under the A1 and A1b headings. What the next context
+cannot re-derive:*
 
-- *Window = 400k MEASURED (auto-compact at 380,519 tok, transcript b2d5b0f4). Gauge read 81.1%
-  at 03:08 - the built-in auto-compact may fire ANY MOMENT; this stamp is the handoff.*
-- *Harness state: UI is RUNNING AND ARMED (launched -StartOn via Start-Process, heartbeat fresh,
-  window on user's desktop). Hooks wired in .claude/settings.json but NOT live this session
-  (mid-session wiring, ledger g) - hook-stop.log entries so far are MY manual test runs, real
-  Stop-hook liveness still unknown until a turn end is observed.*
-- *A1b remaining, in order: (1) & scripts/harness/check.ps1 (in-process; exits end the tool
-  call - output captured first); (2) & scripts/harness/build.ps1; both RESULT lines = repo
-  baseline health, log to wave-a.md. (3) LIVE channel test: & .claude/hooks/phase-stop.ps1 -
-  board has in_progress A1b + ctx over 45 + notes token for A1b ABSENT, so expect CRITICAL MASS
-  ask: injector pastes the notes-ask into THIS session (queued message arrives at next stop).
-  Check paired lines in hook-stop.log + hook-injector.log (120s window). (4) Load CronCreate via
-  ToolSearch, arm floor '11,41 * * * *' named HARNESS HEARTBEAT + delivery-verdict job text per
-  CLAUDE.md RULE ZERO. (5) Memory: write harness-in-starlet note to auto-memory dir, link
-  starlet-deploy-stack. (6) git add (explicit paths: .claude/settings.json .claude/hooks Tools
-  docs scripts/harness CLAUDE.md .gitignore) + local commit; NEVER push (auto-deploys prod).*
-- *Then A2 recon per its board row: subagent fan-out, findings to wave-a.md, implementation
-  phases onto the board as pending (risky ones proposed). User pre-greenlit implementation.*
-- *Known-broken this session (do NOT attempt): harness-driven /compact (ledger j). If THIS
-  context was just compacted: you are mid-A1b - resume its checklist above; do not re-run the
-  A1 battery (it passed; evidence in wave-a.md).*
+- *Window = 400k MEASURED (auto-compact at 380,519 tok, transcript b2d5b0f4). Context was ~81% when
+  this wave-front closed - a reset (built-in auto-compact, or a user /compact) SHOULD happen before
+  A2's subagent fan-out; do not start heavy work above ~45%.*
+- *Harness state: UI RUNNING + ARMED (heartbeat fresh). Hooks wired in settings.json but real
+  Stop-hook liveness UNVERIFIED this session (mid-session wiring). RULE ZERO floor cron 90937956
+  armed ("11,41 * * * *", 7-day expiry) - it wakes the loop through the HOST scheduler (works
+  regardless of the blocked paste channel) and its prompt already contains the A2 instructions.*
+- *A2 is next (the user pre-greenlit research + implementation). Its board row is the spec: fan out
+  Explore subagents over app/ components/ lib/ API-routes/ config; each returns bounded file:line
+  findings so THIS orchestrator window stays lean; merge into wave-a.md; append implementation
+  phases as [pending] rows ([proposed] for risky/prod-touching). First A2 lead already in hand:
+  `npm run lint` FAILS on this repo - 14 @typescript-eslint/no-explicit-any errors (~lines
+  884/886/947/973/983 of one file + HoneycombGallery 161-163) + 20 warnings (raw <img>, unused
+  vars, useMemo deps). tsc is clean; production build is GREEN (lint-dirty but shippable).*
+- *Known-broken this session (do NOT attempt): harness-driven /compact and the live injector paste
+  (classifier-gated from Claude's tools; ledger j+m). The live paste demo is the USER's to watch.
+  If THIS context was just compacted: the install is DONE - go straight to A2; do not re-run the
+  A1/A1b battery (it passed, evidence in wave-a.md).*

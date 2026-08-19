@@ -69,3 +69,29 @@ scripts/harness/build.ps1 + check.ps1 with RESULT-line verdicts).
 runs, live nudge-channel test, A1 close commit) moved to board row A1b. Deliberately NOT tested
 this session: harness-driven /compact end-to-end (ledger j - PreCompact hook not live until a
 session restart, so delivery confirmation cannot fire; the refusal direction IS tested).
+
+## A1b - verification tail, RESULT-line wrappers, autonomous clock, commit
+
+- **check.ps1** (tsc + eslint): RESULT: FAIL, tscExit=0, eslintExit=1. tsc is CLEAN (0 errors).
+  eslint reports **14 errors** (all `@typescript-eslint/no-explicit-any`) + 20 warnings. This is a
+  genuine finding, not a wrapper fault: **the repo does not currently pass its own `npm run lint`**.
+  The `any` errors cluster around lines 884/886/947/973/983 of one file (the lint tail scrolled off
+  the top; A2 identifies it - likely a large API route or lib module) and HoneycombGallery.tsx
+  161-163. Warnings: three raw `<img>` (LCP/bandwidth - next/image candidates), unused vars
+  (`toggle`, `_ev`, `_pull`), two `useMemo` missing-dep warnings in VineTopFrame.tsx, one stale
+  eslint-disable in VideoCarousel.tsx. **First concrete A2 backlog.**
+- **build.ps1** (next build): RESULT: OK exit=0 buildId=kCENk2UE5Qwxuyf_4ZNG_ durationS=17. The
+  production build is GREEN despite the lint errors (next build does not fail on eslint errors by
+  default in this config). 18 routes compiled. So: shippable, but lint-dirty.
+- **RULE ZERO floor**: cron 90937956 armed at "11,41 * * * *" (recurring, session-only, 7-day
+  expiry). This is the autonomous-continuation clock, and crucially it re-invokes through the HOST
+  scheduler - NOT the Win32 paste channel - so it is the half of the loop that works on this stack
+  regardless of the injection-channel question (ledger m). It will wake the loop to run A2.
+- **Live paste demo DEFERRED to the user** (the honest limit): running it needs either (a) a real
+  Stop hook firing - host-spawned, may work, unverified until observed - or (b) me launching the
+  injector, which the classifier blocks AND which would paste into this very session. It is the
+  user's to watch: restart the session so settings.json hooks load, keep the harness UI armed, and
+  watch a turn end - a paired NUDGE/FIRE (hook-stop.log) + "=== injector start ===" (hook-injector.log)
+  within 120s means the channel is live on this host; a HUNG line means the window title/class
+  differs and Raise-Claude needs adapting.
+- **Committed** local 9cdf897 (15 files, 3735 insertions). NOT pushed (main auto-deploys prod).
