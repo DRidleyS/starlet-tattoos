@@ -56,7 +56,7 @@ export async function sendBookingEmail(
     });
   }
 
-  await getResend().emails.send({
+  const { error } = await getResend().emails.send({
     from: `Starlet Tattoos <${FROM}>`,
     to: [TO],
     replyTo: booking.email,
@@ -76,6 +76,11 @@ export async function sendBookingEmail(
     `,
     attachments: emailAttachments,
   });
+  // A failed studio alert must NOT resolve as success — this notification carries
+  // the consent PDF + photo ID, so the caller treats a throw as "not delivered".
+  if (error) {
+    throw new Error(`Resend failed to send the booking notification: ${error.message}`);
+  }
 }
 
 /**
@@ -93,7 +98,7 @@ export async function sendHealedPhotosEmail(
     ? `<h3>Their note</h3><p style="white-space:pre-wrap">${escapeHtml(message.trim())}</p>`
     : "";
 
-  await getResend().emails.send({
+  const { error } = await getResend().emails.send({
     from: `Starlet Tattoos <${FROM}>`,
     to: [TO],
     replyTo: booking.email,
@@ -109,4 +114,7 @@ export async function sendHealedPhotosEmail(
       content: buf,
     })),
   });
+  if (error) {
+    throw new Error(`Resend failed to send the healed-photos notification: ${error.message}`);
+  }
 }

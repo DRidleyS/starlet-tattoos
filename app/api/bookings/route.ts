@@ -132,15 +132,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Send email with attachments
-    await sendBookingEmail(
-      { fullName, email, phone, dob, tattooDescription, consentDate },
-      {
-        consentForm: consentFormBuffer,
-        photoId: photoIdBuffer,
-        referencePhotos: refBuffers.length > 0 ? refBuffers : undefined,
-      }
-    );
+    // Notify the studio. Best-effort: the booking row + uploads are already
+    // committed, so a mail failure must NOT 500 the request — that makes the
+    // client retry and double-book. sendBookingEmail now throws on a Resend
+    // error; we log it here instead of failing. A missed studio email is
+    // recoverable (the booking is in the admin portal); a duplicate is not.
+    try {
+      await sendBookingEmail(
+        { fullName, email, phone, dob, tattooDescription, consentDate },
+        {
+          consentForm: consentFormBuffer,
+          photoId: photoIdBuffer,
+          referencePhotos: refBuffers.length > 0 ? refBuffers : undefined,
+        }
+      );
+    } catch (emailErr) {
+      console.error("Studio booking-notification email error:", emailErr);
+    }
 
     // Confirmation + pre-appointment instructions to the client. Best-effort:
     // the booking is already saved and the studio notified, so don't fail the
