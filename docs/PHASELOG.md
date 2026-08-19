@@ -13,7 +13,7 @@
 - [complete]    A1 :: Harness ported from D:\claude-phase-harness + adapted (400k measured window, empty busy list, UAT neutered) + every gate verified in the failing direction (master switch, token gate both halves, freshness gate, busy reaps, injector REFUSED choke point, build wrapper dev-server fence). Two source-kit bugs found+fixed (census regex, nudge_line path), encoding + orphan-detector findings logged. Closed at 81% context under the harness's own critical-mass rule. Narrative: wave-a.md.
 - [complete]    A1b :: A1 verification tail done: check.ps1 ran (RESULT: FAIL - surfaced a real baseline, 14 eslint no-explicit-any errors + 20 warnings; the wrapper worked), build.ps1 ran (RESULT: OK, buildId minted). RULE ZERO floor clock armed (cron 90937956). Harness memory note written. Install committed locally (9cdf897). DEFERRED to the user: the live injector-paste demo (classifier-gated from Claude's tools; it is the user's to watch). Narrative: wave-a.md.
 - [complete]    A2 :: Recon done: 4 read-only Explore agents (public/admin/lib+config/API) returned 43 file:line findings, merged into wave-a.md, synthesized into wave B (pending) + wave C (proposed). 2 correctness HIGHs + 1 security HIGH + validation/silent-failure/lint/a11y clusters. Narrative: wave-a.md A2 headings.
-- [pending]     B1 :: MAKE THE ADMIN PORTAL TELL THE TRUTH WHEN SOMETHING FAILS. Right now, if the internet hiccups or the login session quietly expires while your cousin is managing the site, the portal LIES: changing a booking's status/notes shows a green "Saved!" even when nothing was saved; deleting a gallery photo makes it disappear from the screen while it still exists (it comes back on refresh); a failed photo upload does nothing at all with no error; a dropped connection can leave the page stuck on "Loading..." or a button stuck on "Saving..." forever. Nothing is broken in normal use - this is purely about honest failure. Also adds proper labels/screen-reader announcements, and sends you back to the page you wanted after logging in. VALUE: your cousin never trusts a change that did not happen. RISK: near zero, admin-only, no public pages touched. DECISION NEEDED: I cannot test this locally (the admin portal needs a real login + database), so pick (a) I implement it and verify by build + code review, you confirm on a Vercel preview before pushing, (b) you give me a local .env so I can log in and click through it, or (c) hold it. Files: app/admin/bookings/[id]/BookingDetail.tsx (save():106, handleDelete():80, followupSent:236, labels :197/:268), app/admin/gallery/page.tsx (fetchAll:41, upload:58, delete:127/133, reorder:152/169), app/admin/login/page.tsx (callbackUrl:27, labels:50, role=alert:45).
+- [complete]    B1 :: THE ADMIN PORTAL NOW TELLS THE TRUTH WHEN SOMETHING FAILS - DONE and browser-verified. The portal used to lie in four ways, all now fixed: a rejected save still flashed "Saved!"; a failed photo delete vanished from the screen anyway (and came back on refresh); a rejected upload did nothing at all with no error; and a dropped connection could park the page on "Loading..." or a button on "Saving..." forever. Every failure now says what went wrong, an expired sign-in says so in those words, and failed reorders roll back instead of leaving the admin grid and the public gallery disagreeing. Also fixed: a follow-up with no date rendered as "Sent 31 December 1969"; logging in from a deep link now returns you to the page you wanted (with an open-redirect guard, since that destination comes from the URL and is attacker-controllable); and a server error in the portal shows a real explanation with a working retry instead of a bare "ERROR 108595751". Plus labels wired to their controls and screen-reader announcements. VERIFIED IN THE BROWSER using a throwaway local .env.local (auth only, NO Supabase, no production value, gitignored): deep link -> login -> landed on /admin/gallery not the old hardcoded page; wrong password -> inline alert, no stuck button; gallery against a 500 -> error banner + working Retry instead of hanging; dead database -> the new error boundary. NOT browser-verified: BookingDetail.tsx needs a real booking row, so it is gate + review only. Gates OK (tsc=0 eslint=0, buildId CMrvrzVBL4fJl3kGcHcPo). Files: BookingDetail.tsx, app/admin/gallery/page.tsx, app/admin/login/page.tsx, + NEW app/admin/error.tsx. Narrative: wave-b.md.
 - [complete]    B2 :: Public gallery correctness + a11y DONE (commits f4cbd86 HoneycombGallery + e09e5a8 FlashGallery, both verified in dev via DOM query): lightbox ref bug fixed, hex+card keyboard buttons, meaningful alt, lazy imgs, EventListener casts. FlashGallery :54 mobile padding overflow deferred to B6. Narrative: wave-b.md.
 - [complete]    B3 :: Booking submission reliability CORE done (commit 7dfee31, build verified): send-booking-email.ts now throws on Resend {error} (both sends); bookings route wraps the studio send best-effort (kills the duplicate-booking-on-500 path). The two type/lint items originally listed here (BookingFunnel keydown dep, signature_pad typing) are absorbed into B5. Narrative: wave-b.md.
 - [pending]     B4 :: STOP THE PUBLIC BOOKING FORM FROM ACCEPTING ANYTHING ANYONE SENDS IT. Today the form takes files with NO limit on size, type, or count - someone could upload a 2GB file, or 500 files, or a video renamed to .jpg, and the server would try to process and store all of it. Two reasons this matters more than it sounds: your Supabase account is ALREADY showing a "grace period is over, you will stop serving requests when you use up your quota" warning (ledger b), so filling storage takes the WHOLE SITE down, not just the form; and row-level security is switched off (ledger a), which means this validation is the only thing standing between a stranger and your database. Also stops raw database error messages (table names, schema details) from being shown to the public, and validates the smaller inputs. VALUE: closes the one genuinely exploitable hole on the live site, and protects the storage quota you are already near. RISK: this touches the live booking path, so it must not reject real clients - the caps are set well above any real submission (a phone photo is ~3-8MB, the cap would be ~15MB each, max ~6 files). DECISION NEEDED: same as B1 - (a) build + code review then you confirm on a Vercel preview, (b) local .env so I can submit a real test booking end to end, or (c) hold. My recommendation: this is the highest-value item left; (b) is the safest way to do it because I can prove a real booking still succeeds. Files: app/api/bookings/route.ts:44 (size/MIME/count caps + sharp re-encode), app/api/gallery/route.ts (try/catch, size cap, category whitelist, generic errors), bookings/[id] (status enum, notes cap), gallery+videos reorder (id validation, partial-failure checks), gallery+videos delete (storage-remove result checks), videos (url validation).
@@ -132,6 +132,22 @@
   or a local .env is provided, or build+review is accepted. Also deferred from B5: the Supabase
   Database generic (needs `supabase gen types` or careful hand-typing) and ~19 exhaustive-deps
   warnings (non-blocking; some are real refactors).
+  PARTLY DISSOLVED AT B1 (2026-08-19): the AUTH half of this boundary was self-inflicted. A throwaway
+  .env.local holding only NEXTAUTH_SECRET / AUTH_SECRET / NEXTAUTH_URL / ADMIN_EMAIL /
+  ADMIN_PASSWORD_HASH (invented values, NO production secret, gitignored by the existing `.env*`
+  rule) makes the ENTIRE admin UI reachable locally. Leaving SUPABASE_* absent is a FEATURE: auth up
+  + database down is exactly the failure state the error handling exists for, so the 500s became the
+  test fixture instead of the blocker. What genuinely still needs data is anything rendering a real
+  row (BookingDetail.tsx) and the Supabase half of B4. Credentials are in the file's own header;
+  delete the file to revert.
+- (t) PROJECT (trap measured at B1, 2026-08-19): Next.js runs .env values through VARIABLE EXPANSION,
+  and does so even for SINGLE-QUOTED values. A bcrypt hash starting `$2b$10$...` is therefore
+  destroyed on load - `$2b`, `$10` and the following `$...` run are each replaced with an empty
+  string, so a 60-char hash arrived as 47 chars and every login failed with a CORRECT password, with
+  no error anywhere except a generic CredentialsSignin. Escape each `$` with a backslash. Diagnosed
+  by loading the file through Next's own `@next/env` and printing the parsed value rather than
+  theorizing. Relevant to the user directly: putting a real ADMIN_PASSWORD_HASH in any local env file
+  hits this.
 - (p) HARNESS (the decisive break, measured 2026-08-19 ~04:xx): the autonomous loop CANNOT cross the
   context ceiling on this stack without the user. Three cron fires in a row measured 79.6% -> 81.6%
   -> 94.9% -> 95.9%, climbing ~4k per fire, and NO reset fired at the ~380k point I expected. Refined
@@ -190,7 +206,39 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~12:20: **C1 CLOSED**, **C2 CLOSED**, **C3 CLOSED** - wave C (security hardening)
+*Stamp 2026-08-19 ~12:35: **B1 CLOSED** - the admin portal now reports failure honestly. Committed
+locally, NOT pushed. Board: A1/A1b/A2/B1/B2/B3/B5/B6/C1/C2/C3 complete; only B4 remains, and it is
+STILL the user's call. What a fresh context cannot re-derive:*
+
+- ***A LOCAL `.env.local` NOW EXISTS AND I CREATED IT.*** *Auth vars only (NEXTAUTH_SECRET,
+  AUTH_SECRET, NEXTAUTH_URL, ADMIN_EMAIL, ADMIN_PASSWORD_HASH), all INVENTED - no production secret
+  is in it, and it is gitignored by the existing `.env*` rule. Login for the dev server:
+  local-admin@example.test / b1-local-test-only. SUPABASE_* is deliberately ABSENT so /api/gallery
+  keeps returning 500 - that 500 is the test fixture for B1's error handling, not a problem to fix.
+  Deleting the file reverts everything. TELL THE USER IT EXISTS if it has not already been said.*
+- *THE ENV TRAP (ledger t) cost real time and will bite the user: Next expands $VAR inside .env
+  values EVEN IN SINGLE QUOTES, so a bcrypt hash `$2b$10$...` loads mangled (60 chars -> 47) and a
+  CORRECT password fails with only a generic CredentialsSignin to show for it. Backslash-escape every
+  `$`. Diagnosed by parsing the file through Next's own `@next/env`, not by guessing.*
+- *B1 evidence is under the `## B1` heading in wave-b.md. Watched live: deep link -> login -> landed
+  on /admin/gallery (the old code hardcoded /admin/bookings); wrong password -> inline role=alert and
+  a recovered button; /admin/gallery against a 500 -> error banner + Retry that genuinely re-fires
+  (network log) instead of "Loading..." forever; dead DB -> the NEW app/admin/error.tsx boundary.
+  HONEST GAP: BookingDetail.tsx could NOT be browser-verified (needs a real booking row) - gate +
+  review only. Gates: tsc=0 eslint=0; buildId CMrvrzVBL4fJl3kGcHcPo.*
+- *NOTE the middleware supplies callbackUrl as an ABSOLUTE url (http://localhost:3000/admin/gallery),
+  so the open-redirect guard resolves against window.location.origin; a `startsWith("/")` check would
+  reject every real callback and silently restore the old hardcoded behaviour. Do not "simplify" it.*
+- ***B4 IS THE ONLY WORK LEFT AND IT IS STILL THE USER'S DECISION.*** *It changes the LIVE public
+  booking path (file size/type/count caps), which is how the business gets customers, so a wrong cap
+  rejects real clients. The auth half of the old blocker is now dissolved (see ledger q), but B4's
+  Supabase half is NOT - a real end-to-end submission still needs real Supabase creds. Standing
+  recommendation unchanged: B4 deserves a real submission, not code review.*
+- *Dev server was restarted three times during B1 and is RUNNING again on port 3000 (serverId
+  f739de3e-da8a-4fc9-b779-439f1c730896). build.ps1 REFUSES while it holds the port - stop the preview
+  first. Public homepage re-checked after all edits: scrollWidth == clientWidth == 1265, no overflow.*
+
+*(prior stamp, still accurate:) Stamp 2026-08-19 ~12:20: **C1 CLOSED**, **C2 CLOSED**, **C3 CLOSED** - wave C (security hardening)
 is DONE, committed locally as e5e4043, and deliberately NOT PUSHED (repo is 13 commits ahead of
 origin/main; pushing auto-deploys prod, and the user wants to eyeball layout first). This stamp was
 written because the harness's own boundary notes-gate REFUSED to compact without it - that gate is

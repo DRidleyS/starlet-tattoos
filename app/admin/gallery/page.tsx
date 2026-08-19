@@ -19,6 +19,18 @@ type Video = {
 
 type Tab = "gallery" | "flash" | "videos";
 
+/**
+ * Turns a failed response into advice. An expired sign-in is the likeliest
+ * failure in a portal that gets left open for days, and it needs different
+ * wording than a genuine server error.
+ */
+function describeFailure(status: number, fallback: string): string {
+  if (status === 401 || status === 403)
+    return "Your sign-in has expired. Reload the page and sign in again.";
+  if (status === 413) return "That file is too large to upload.";
+  return fallback;
+}
+
 export default function GalleryAdminPage() {
   const [tab, setTab] = useState<Tab>("gallery");
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -26,19 +38,37 @@ export default function GalleryAdminPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [imgRes, vidRes] = await Promise.all([
-      fetch("/api/gallery"),
-      fetch("/api/videos"),
-    ]);
-    const imgs: GalleryImage[] = await imgRes.json();
-    const vids: Video[] = await vidRes.json();
-    setImages(Array.isArray(imgs) ? imgs : []);
-    setVideos(Array.isArray(vids) ? vids : []);
-    setLoading(false);
+    setError(null);
+    try {
+      const [imgRes, vidRes] = await Promise.all([
+        fetch("/api/gallery"),
+        fetch("/api/videos"),
+      ]);
+      if (!imgRes.ok || !vidRes.ok) {
+        setError(
+          describeFailure(
+            imgRes.ok ? vidRes.status : imgRes.status,
+            "Could not load the gallery."
+          )
+        );
+        return;
+      }
+      const imgs: GalleryImage[] = await imgRes.json();
+      const vids: Video[] = await vidRes.json();
+      setImages(Array.isArray(imgs) ? imgs : []);
+      setVideos(Array.isArray(vids) ? vids : []);
+    } catch {
+      // Any throw in here used to skip setLoading(false) entirely, parking the
+      // page on "Loading..." forever with no explanation and no way to retry.
+      setError("Could not reach the server. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -55,7 +85,15 @@ export default function GalleryAdminPage() {
     const form = new FormData();
     form.append("file", file);
     form.append("category", tab);
-    await fetch("/api/gallery", { method: "POST", body: form });
+    const res = await fetch("/api/gallery", { method: "POST", body: form });
+    // The response was previously discarded, so a rejected upload was
+    // indistinguishable from a successful one: the refetch just came back
+    // without the new image and nothing said why.
+    if (!res.ok) {
+      throw new Error(
+        describeFailure(res.status, "The server rejected that image.")
+      );
+    }
   };
 
   const uploadVideo = async (file: File) => {
@@ -106,6 +144,7 @@ export default function GalleryAdminPage() {
     if (!file) return;
     setUploading(true);
     setUploadProgress(null);
+    setError(null);
     try {
       if (tab === "videos") {
         await uploadVideo(file);
@@ -114,7 +153,9 @@ export default function GalleryAdminPage() {
       }
       await fetchAll();
     } catch (err) {
-      alert((err as Error).message);
+      setError(
+        err instanceof Error ? err.message : "The upload failed. Please retry."
+      );
     } finally {
       setUploading(false);
       setUploadProgress(null);
@@ -122,16 +163,37 @@ export default function GalleryAdminPage() {
     }
   };
 
+  // Both deletes drop the item from the grid only after the server confirms.
+  // They used to remove it unconditionally, so a failed delete looked exactly
+  // like a successful one until a page refresh brought the item back.
   const handleDeleteImage = async (id: string) => {
     if (!confirm("Delete this image?")) return;
-    await fetch(`/api/gallery/${id}`, { method: "DELETE" });
-    setImages((prev) => prev.filter((img) => img.id !== id));
+    setError(null);
+    try {
+      const res = await fetch(`/api/gallery/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setError(describeFailure(res.status, "Could not delete that image."));
+        return;
+      }
+      setImages((prev) => prev.filter((img) => img.id !== id));
+    } catch {
+      setError("Network error - the image was not deleted.");
+    }
   };
 
   const handleDeleteVideo = async (id: string) => {
     if (!confirm("Delete this video?")) return;
-    await fetch(`/api/videos/${id}`, { method: "DELETE" });
-    setVideos((prev) => prev.filter((v) => v.id !== id));
+    setError(null);
+    try {
+      const res = await fetch(`/api/videos/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setError(describeFailure(res.status, "Could not delete that video."));
+        return;
+      }
+      setVideos((prev) => prev.filter((v) => v.id !== id));
+    } catch {
+      setError("Network error - the video was not deleted.");
+    }
   };
 
   const moveImage = async (index: number, direction: -1 | 1) => {
@@ -142,18 +204,32 @@ export default function GalleryAdminPage() {
     const [moved] = reordered.splice(index, 1);
     reordered.splice(newIndex, 0, moved);
 
+    const previous = images;
     const updatedAll = images.map((img) => {
       const idx = reordered.findIndex((r) => r.id === img.id);
       if (idx !== -1) return { ...img, sort_order: idx };
       return img;
     });
     setImages(updatedAll);
+    setError(null);
 
-    await fetch("/api/gallery/reorder", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderedIds: reordered.map((r) => r.id) }),
-    });
+    // The saved order is exactly what visitors see on the public gallery, so a
+    // silently failed save left the admin grid and the live site disagreeing.
+    // On failure the optimistic move is rolled back rather than left standing.
+    try {
+      const res = await fetch("/api/gallery/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds: reordered.map((r) => r.id) }),
+      });
+      if (!res.ok) {
+        setImages(previous);
+        setError(describeFailure(res.status, "Could not save the new order."));
+      }
+    } catch {
+      setImages(previous);
+      setError("Network error - the new order was not saved.");
+    }
   };
 
   const moveVideo = async (index: number, direction: -1 | 1) => {
@@ -164,13 +240,24 @@ export default function GalleryAdminPage() {
     const [moved] = reordered.splice(index, 1);
     reordered.splice(newIndex, 0, moved);
 
+    const previous = videos;
     setVideos(reordered.map((v, i) => ({ ...v, sort_order: i })));
+    setError(null);
 
-    await fetch("/api/videos/reorder", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderedIds: reordered.map((r) => r.id) }),
-    });
+    try {
+      const res = await fetch("/api/videos/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds: reordered.map((r) => r.id) }),
+      });
+      if (!res.ok) {
+        setVideos(previous);
+        setError(describeFailure(res.status, "Could not save the new order."));
+      }
+    } catch {
+      setVideos(previous);
+      setError("Network error - the new order was not saved.");
+    }
   };
 
   const uploadLabel = uploading
@@ -191,6 +278,7 @@ export default function GalleryAdminPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
+            aria-pressed={tab === t}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
               tab === t
                 ? "bg-rose-500 text-white"
@@ -220,6 +308,24 @@ export default function GalleryAdminPage() {
           />
         </label>
       </div>
+
+      {/* Every failure path above lands here instead of vanishing or firing an
+          alert(). role=alert announces it; the retry re-runs the fetch that
+          previously had no way back once it failed. */}
+      {error && (
+        <div
+          role="alert"
+          className="mb-6 flex flex-wrap items-center gap-3 bg-red-500/10 border border-red-500/40 text-red-300 text-sm rounded-lg px-4 py-3"
+        >
+          <span>{error}</span>
+          <button
+            onClick={fetchAll}
+            className="underline hover:text-red-200 transition"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-neutral-500">Loading...</p>

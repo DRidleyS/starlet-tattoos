@@ -58,6 +58,7 @@ export default function BookingDetail({
   });
   const [followupError, setFollowupError] = useState<string | null>(null);
   const [followupBusy, setFollowupBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const router = useRouter();
 
   const followupPending = Boolean(
@@ -65,7 +66,12 @@ export default function BookingDetail({
       followup.scheduledFor &&
       new Date(followup.scheduledFor).getTime() > now
   );
-  const followupSent = Boolean(followup.emailId && !followupPending);
+  // `scheduledFor` must be present, not just the email id: an id without a date
+  // used to fall through to the "Sent ..." branch below, where the non-null
+  // assertion handed `new Date(null)` to the formatter and printed 31 Dec 1969.
+  const followupSent = Boolean(
+    followup.emailId && followup.scheduledFor && !followupPending
+  );
 
   const applyFollowupResponse = (data: {
     followup?: Followup;
@@ -75,36 +81,73 @@ export default function BookingDetail({
     setFollowupError(data.followupError ?? null);
   };
 
+  /**
+   * Turns a failed response into something the owner can act on. An expired
+   * session is by far the most likely cause here — the admin portal is left
+   * open for days — and it needs different advice than a genuine server error.
+   */
+  const describeFailure = (res: Response, fallback: string) =>
+    res.status === 401 || res.status === 403
+      ? "Your sign-in has expired. Reload the page and sign in again."
+      : fallback;
+
   const handleDelete = async () => {
     setDeleting(true);
-    const res = await fetch(`/api/bookings/${booking.id}`, { method: "DELETE" });
-    if (res.ok) {
-      router.push("/admin/bookings");
-    } else {
-      setDeleting(false);
-      setConfirmDelete(false);
-      alert("Failed to delete booking");
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        // Deliberately leaves the button disabled: the navigation is the
+        // feedback, and re-enabling it invites a second delete mid-transition.
+        router.push("/admin/bookings");
+        return;
+      }
+      setActionError(
+        describeFailure(res, "Could not delete this booking. Please try again.")
+      );
+    } catch {
+      setActionError("Network error - the booking was not deleted.");
     }
+    // Only reached on failure; success navigates away.
+    setDeleting(false);
+    setConfirmDelete(false);
   };
 
   const save = async () => {
     setSaving(true);
     setSaved(false);
-    const res = await fetch(`/api/bookings/${booking.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, notes }),
-    });
-    if (res.ok) {
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, notes }),
+      });
+      // The success banner used to be set unconditionally, so a rejected save
+      // still flashed "Saved!" and the owner walked away believing a status
+      // change had been written when nothing had.
+      if (!res.ok) {
+        setActionError(
+          describeFailure(res, "Could not save your changes. Please try again.")
+        );
+        return;
+      }
       try {
         applyFollowupResponse(await res.json());
       } catch {
         // ignore malformed response body
       }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // fetch() itself rejects when the connection drops. Without this the
+      // button sat on "Saving..." forever with no way back.
+      setActionError("Network error - your changes were not saved.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   const followupAction = async (action: "schedule" | "cancel") => {
@@ -194,8 +237,14 @@ export default function BookingDetail({
       {/* Status & Notes */}
       <section className="bg-neutral-900 rounded-xl p-6 space-y-4">
         <div>
-          <label className="block text-sm text-neutral-400 mb-1">Status</label>
+          <label
+            htmlFor="booking-status"
+            className="block text-sm text-neutral-400 mb-1"
+          >
+            Status
+          </label>
           <select
+            id="booking-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             className="bg-neutral-800 text-white rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-rose-400"
@@ -209,9 +258,12 @@ export default function BookingDetail({
         </div>
 
         <div>
-          <label className="block text-sm text-neutral-400 mb-1">
+          {/* Not a <label>: this heads a status panel, not a form control, and
+              a label pointing at nothing is skipped or misread by screen
+              readers. */}
+          <p className="block text-sm text-neutral-400 mb-1">
             Healing follow-up
-          </label>
+          </p>
           <div className="bg-neutral-800 rounded-lg px-4 py-3 space-y-2">
             {followupPending ? (
               <>
@@ -265,8 +317,14 @@ export default function BookingDetail({
         </div>
 
         <div>
-          <label className="block text-sm text-neutral-400 mb-1">Notes</label>
+          <label
+            htmlFor="booking-notes"
+            className="block text-sm text-neutral-400 mb-1"
+          >
+            Notes
+          </label>
           <textarea
+            id="booking-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={4}
@@ -274,6 +332,18 @@ export default function BookingDetail({
             placeholder="Private notes about this booking..."
           />
         </div>
+
+        {/* Failures are reported here instead of through alert(): the message
+            stays on screen next to the control that produced it, and role=alert
+            makes a screen reader announce it without stealing focus. */}
+        {actionError && (
+          <p
+            role="alert"
+            className="bg-red-500/10 border border-red-500/40 text-red-300 text-sm rounded-lg px-4 py-3"
+          >
+            {actionError}
+          </p>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -283,6 +353,12 @@ export default function BookingDetail({
           >
             {saving ? "Saving..." : saved ? "Saved!" : "Save"}
           </button>
+
+          {/* The button's own label carries the state visually, but a changed
+              label on a focused button is not reliably announced. */}
+          <span role="status" aria-live="polite" className="sr-only">
+            {saving ? "Saving changes" : saved ? "Changes saved" : ""}
+          </span>
 
           {!confirmDelete ? (
             <button
@@ -316,7 +392,10 @@ export default function BookingDetail({
 }
 
 function formatFollowupDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  const date = new Date(iso);
+  // Better an honest "an unknown date" than a confident 31 December 1969.
+  if (Number.isNaN(date.getTime())) return "an unknown date";
+  return date.toLocaleDateString(undefined, {
     weekday: "short",
     month: "long",
     day: "numeric",

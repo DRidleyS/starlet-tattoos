@@ -76,3 +76,94 @@ fall back to hardcoded public images (tat*.png / flash*.PNG) — a pre-existing 
 verification. The Browser pane is not composited here, so screenshots + requestAnimationFrame waits
 time out; verify via read_page / get_page_text / direct DOM queries (javascript_tool) instead.
 Admin-portal phases (B1) can't be browser-tested locally (no auth env) — verify by build + review.
+SUPERSEDED at B1: a throwaway local `.env.local` (auth vars only, no Supabase) makes the whole admin
+UI reachable without any production secret. See the B1 heading below.
+
+## B1 — make the admin portal tell the truth when something fails  [done, browser-verified]
+
+Proceeded under the user's option (a) — implement, verify by gate + review, they confirm on a preview
+before any push — because it was the only option that is safe under EVERY answer they might still
+give: admin-only, no public page touched, and nothing is pushed regardless. If they later prefer
+option (b), the code is already written and only needs re-confirming.
+
+### The dishonest failures that were fixed
+
+`app/admin/bookings/[id]/BookingDetail.tsx`
+- `save()` set `saved` UNCONDITIONALLY, so a rejected save still flashed "Saved!" — the owner would
+  walk away believing a status change had been written. Now only success sets it; failures raise a
+  `role="alert"` banner, and 401/403 gets its own "your sign-in has expired" wording because a portal
+  left open for days expires far more often than the server actually breaks.
+- Neither `save()` nor `handleDelete()` had a try/catch, so a dropped connection left the button on
+  "Saving..."/"Deleting..." forever. Both now recover; delete deliberately stays disabled on success
+  because the navigation is the feedback.
+- `followupSent` required only `emailId`, letting a row with no `scheduled_for` reach the "Sent ..."
+  branch where `scheduledFor!` handed `new Date(null)` to the formatter and rendered **31 December
+  1969**. Now the date is required, and `formatFollowupDate` returns "an unknown date" for anything
+  unparseable rather than a confident wrong date.
+- `<label>`s had no `htmlFor` and the controls no `id`; the "Healing follow-up" label pointed at no
+  control at all (it heads a status panel) and is now a `<p>`. Added an `sr-only` `role="status"`.
+
+`app/admin/gallery/page.tsx`
+- `fetchAll()` had no try/catch, and `await imgRes.json()` on a 500 (an HTML error body) throws — so
+  `setLoading(false)` never ran and the page sat on "Loading..." forever. THIS IS THE ONE WATCHED
+  FAILING AND THEN PASSING (see below).
+- `uploadImage()` discarded the response entirely: a rejected upload was indistinguishable from a
+  successful one — the refetch simply returned without the image. Now throws with the reason.
+- Both deletes removed the item from the grid unconditionally, so a failed delete looked identical to
+  a successful one until a refresh brought the item back. Now the grid changes only after the server
+  confirms.
+- Both reorders ignored the response, leaving the admin grid and the public gallery disagreeing.
+  Now the optimistic move is ROLLED BACK on failure.
+- `alert()` replaced with an inline `role="alert"` banner carrying a **Retry**; tabs got `aria-pressed`.
+
+`app/admin/login/page.tsx`
+- The post-login destination was hardcoded to `/admin/bookings`, so a deep link to the gallery manager
+  always landed elsewhere. Now honours `callbackUrl`.
+- **Open-redirect guard added.** `callbackUrl` arrives in the query string and is attacker-
+  controllable, so `safeCallbackUrl()` resolves it against the current origin and rejects anything
+  off-origin or outside `/admin`. MEASURED: the middleware supplies it as an ABSOLUTE url
+  (`http://localhost:3000/admin/gallery`), so a naive `startsWith("/")` check would have rejected
+  every real callback and silently preserved the old behaviour.
+- `if (res?.error)` treated a MISSING response as success and redirected into /admin with no session;
+  now `!res || res.error`. Added `role="alert"`, `htmlFor`/`id`, and autocomplete tokens.
+
+`app/admin/error.tsx` (NEW — beyond the row's file list, added on evidence)
+Only visible once logged in: a server-side failure on `/admin/bookings` dropped the owner onto Next's
+built-in "This page couldn't load" above a bare `ERROR 108595751`. Same class of dishonest failure the
+phase exists to remove, so the segment got a real boundary: human explanation, a working "Try again"
+(`reset()`), and the digest shown while the raw message is NOT — thrown messages can carry table and
+column names to the screen.
+
+### How it was verified (the boundary in ledger q turned out to be soft)
+
+A throwaway `.env.local` — auth vars ONLY, no Supabase, no production value anywhere, gitignored via
+the existing `.env*` rule — made the entire admin UI reachable. Leaving Supabase absent was the point:
+with auth working and the database missing, `/api/gallery` returns 500, which IS the failure B1 fixes.
+
+Watched live in the browser:
+- deep-link `/admin/gallery` -> middleware bounce -> sign in -> landed on **`/admin/gallery`**, not the
+  old hardcoded bookings page.
+- wrong password -> stayed on the page, `role="alert"` reading "Invalid email or password.", button
+  recovered to "Sign In" (no stuck "Signing in...").
+- `/admin/gallery` against a 500 -> `role="alert"` "Could not load the gallery." + **Retry**, and the
+  Retry re-fires the request (confirmed in the network log). Previously: "Loading..." forever.
+- `/admin/bookings` against a dead database -> the new boundary, admin nav intact, digest shown.
+- tabs report `aria-pressed` true/false; both login labels resolve to their real controls via
+  `label.control`.
+- public homepage regression check: renders, scrollWidth == clientWidth == 1265, no overflow.
+
+NOT browser-verified: `BookingDetail.tsx` itself needs a real booking row, so it is covered by
+tsc + eslint + production build + review only. Stated plainly rather than implied.
+
+### A trap worth remembering
+
+The first login attempt failed with a VALID password. Next.js runs `.env` values through variable
+expansion, and it does so **even for single-quoted values** — the bcrypt hash `$2b$10$2OrXcw...`
+arrived as `/F/fbaWjctfnnqe...` (47 chars, not 60) because `$2b`, `$10` and `$2OrXcw` were each
+substituted with an empty string. Diagnosed by loading the file through Next's own `@next/env` rather
+than guessing, and fixed by backslash-escaping each `$`. This will bite anyone putting a real
+`ADMIN_PASSWORD_HASH` in a local env file. Logged as ledger (t).
+
+Gates: `RESULT: OK tsc=0 eslint=0`, `RESULT: OK exit=0 buildId=CMrvrzVBL4fJl3kGcHcPo`. The gate also
+earned its keep here — it failed the first run on a raw `<a>` in the new error boundary
+(`@next/next/no-html-link-for-pages`), fixed to `<Link>`.
