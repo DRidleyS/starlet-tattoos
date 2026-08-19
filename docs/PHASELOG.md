@@ -16,7 +16,7 @@
 - [complete]    B1 :: THE ADMIN PORTAL NOW TELLS THE TRUTH WHEN SOMETHING FAILS - DONE and browser-verified. The portal used to lie in four ways, all now fixed: a rejected save still flashed "Saved!"; a failed photo delete vanished from the screen anyway (and came back on refresh); a rejected upload did nothing at all with no error; and a dropped connection could park the page on "Loading..." or a button on "Saving..." forever. Every failure now says what went wrong, an expired sign-in says so in those words, and failed reorders roll back instead of leaving the admin grid and the public gallery disagreeing. Also fixed: a follow-up with no date rendered as "Sent 31 December 1969"; logging in from a deep link now returns you to the page you wanted (with an open-redirect guard, since that destination comes from the URL and is attacker-controllable); and a server error in the portal shows a real explanation with a working retry instead of a bare "ERROR 108595751". Plus labels wired to their controls and screen-reader announcements. VERIFIED IN THE BROWSER using a throwaway local .env.local (auth only, NO Supabase, no production value, gitignored): deep link -> login -> landed on /admin/gallery not the old hardcoded page; wrong password -> inline alert, no stuck button; gallery against a 500 -> error banner + working Retry instead of hanging; dead database -> the new error boundary. NOT browser-verified: BookingDetail.tsx needs a real booking row, so it is gate + review only. Gates OK (tsc=0 eslint=0, buildId CMrvrzVBL4fJl3kGcHcPo). Files: BookingDetail.tsx, app/admin/gallery/page.tsx, app/admin/login/page.tsx, + NEW app/admin/error.tsx. Narrative: wave-b.md.
 - [complete]    B2 :: Public gallery correctness + a11y DONE (commits f4cbd86 HoneycombGallery + e09e5a8 FlashGallery, both verified in dev via DOM query): lightbox ref bug fixed, hex+card keyboard buttons, meaningful alt, lazy imgs, EventListener casts. FlashGallery :54 mobile padding overflow deferred to B6. Narrative: wave-b.md.
 - [complete]    B3 :: Booking submission reliability CORE done (commit 7dfee31, build verified): send-booking-email.ts now throws on Resend {error} (both sends); bookings route wraps the studio send best-effort (kills the duplicate-booking-on-500 path). The two type/lint items originally listed here (BookingFunnel keydown dep, signature_pad typing) are absorbed into B5. Narrative: wave-b.md.
-- [pending]     B4 :: STOP THE PUBLIC BOOKING FORM FROM ACCEPTING ANYTHING ANYONE SENDS IT. Today the form takes files with NO limit on size, type, or count - someone could upload a 2GB file, or 500 files, or a video renamed to .jpg, and the server would try to process and store all of it. Two reasons this matters more than it sounds: your Supabase account is ALREADY showing a "grace period is over, you will stop serving requests when you use up your quota" warning (ledger b), so filling storage takes the WHOLE SITE down, not just the form; and row-level security is switched off (ledger a), which means this validation is the only thing standing between a stranger and your database. Also stops raw database error messages (table names, schema details) from being shown to the public, and validates the smaller inputs. VALUE: closes the one genuinely exploitable hole on the live site, and protects the storage quota you are already near. RISK: this touches the live booking path, so it must not reject real clients - the caps are set well above any real submission (a phone photo is ~3-8MB, the cap would be ~15MB each, max ~6 files). DECISION NEEDED: same as B1 - (a) build + code review then you confirm on a Vercel preview, (b) local .env so I can submit a real test booking end to end, or (c) hold. My recommendation: this is the highest-value item left; (b) is the safest way to do it because I can prove a real booking still succeeds. Files: app/api/bookings/route.ts:44 (size/MIME/count caps + sharp re-encode), app/api/gallery/route.ts (try/catch, size cap, category whitelist, generic errors), bookings/[id] (status enum, notes cap), gallery+videos reorder (id validation, partial-failure checks), gallery+videos delete (storage-remove result checks), videos (url validation).
+- [complete]    B4 :: THE PUBLIC BOOKING FORM NO LONGER ACCEPTS ANYTHING ANYONE SENDS IT - DONE, and the limits were tested in BOTH directions. The form used to take files with no limit on size, type or count, so someone could have uploaded a 2GB file, or 500 files, or a video renamed .jpg, and the server would have processed and stored all of it. That mattered more than it sounds because row-level security is off (ledger a), making this validation the only thing between a stranger and your database, and because your Supabase quota warning (ledger b) means filling storage takes the WHOLE SITE down, not just the form. Now: every upload is re-encoded through an image processor, so a file that is not really an image cannot get in on the strength of its name or its claimed type; caps are 15MB per photo, 40MB total, 6 reference photos; and nothing is written to storage until every check has passed, so a rejected submission no longer leaves debris behind. Raw database errors (table and column names) are no longer shown to the public. Also fixed across the other endpoints: an arbitrary booking status could be written straight to the database; reordering photos always reported success even when it saved nothing; failed file deletions were silently ignored, including client photo IDs left behind after a booking was deleted; and a video could be pointed at any address on the internet and shown on your homepage. THE CAPS WERE SET FROM YOUR OWN FORM, NOT GUESSED: it already shrinks photos to 1600px and allows 3 references, so a real submission is ~1.5MB per file at worst and every cap sits about 10x above that. PROVEN LOCALLY: realistic submissions (with and without photos) passed every check; a 16MB file, 7 photos, a disguised non-image, a malformed email and an over-long description were each refused with a message safe to show a customer. RESIDUAL GAP: no booking has been submitted end-to-end against a real database, so the write path after validation is unchanged-but-unproven; a real submission still needs Supabase credentials. Gates OK (tsc=0 eslint=0, buildId YVu6XAi4A37M68ggKTFqd). Files: app/api/bookings/route.ts, app/api/bookings/[id]/route.ts, app/api/gallery/route.ts, app/api/gallery/[id]/route.ts, app/api/gallery/reorder/route.ts, app/api/videos/route.ts, app/api/videos/[id]/route.ts, app/api/videos/reorder/route.ts, app/api/videos/upload-url/route.ts. Narrative: wave-b.md.
 - [complete]    B6 :: SEO metadata + media perf DONE (commit 413670e, VERIFIED in dev): layout.tsx metadataBase+OpenGraph+Twitter+title template, booking-page metadata, FlashGallery p-40 -> responsive (no 375px horizontal overflow, verified), VideoCarousel inactive/peek videos preload=metadata (build-verified only - no local video data). Deferred: Vine resize-debounce (animation-internals, modest payoff; + its exhaustive-deps warnings). Narrative: wave-b.md.
 - [complete]    B5 :: Lint-clean DONE (commit 6693252, VERIFIED check.ps1 RESULT OK tsc=0 eslint=0). All 14 no-explicit-any gone (CSS-var->React.CSSProperties, signature_pad v5 API, EventListener casts, catch:unknown) + the page.tsx set-state-in-effect error (justified disable) + stale VideoCarousel directive. Funnel renders, --navSize resolves (verified). NOT done (were listed but are lower-value/riskier): Supabase Database generic (needs typegen or careful hand-typing) and the ~19 remaining exhaustive-deps WARNINGS (don't fail the gate; some are real refactors). Left as ledger item. Narrative: wave-b.md.
 - [complete]    C1 :: Abuse & brute-force protection DONE (VERIFIED: limiter watched firing). New lib/rate-limit.ts (in-process sliding window, fails open everywhere) applied to POST /api/bookings (5/hr/IP, checked before body parse), POST /api/healed-photos (10/hr/IP), and the admin-login failure path (10 failed attempts/15min/IP; only failures count, success clears, gate SKIPPED when no real IP so a stranger can't lock out the owner). Dev proof: 7 rapid booking POSTs -> 1-5 passed to validation (400), 6 returned 429 + Retry-After 3600, 7 stayed 429. Limitation documented: per-instance, not distributed; swap point is hit()/peek(). Narrative: wave-c.md.
@@ -62,6 +62,8 @@
 - (a) RLS is DISABLED on public.bookings / gallery_images / videos in prod Supabase. Enabling is
   zero-impact (app is service-role only) but is schema DDL on prod -> needs the user's explicit
   go-ahead; ready-to-run SQL is in the 2026-08-18 session report + memory. USER'S CALL.
+  STILL OPEN, but the exposure it created is now much smaller: B4 (2026-08-19) added the input
+  validation that was the ONLY guard while RLS is off. RLS remains worth enabling as defence in depth.
 - (b) Supabase Free-plan banner "Grace period is over - projects will not serve requests when you
   use up your quota" - billing review belongs to the user/cousin (org owner ghostline707).
 - (c) All 6 real bookings (Apr-Jul 2026) still have status "new": the owner has never used the
@@ -140,6 +142,11 @@
   test fixture instead of the blocker. What genuinely still needs data is anything rendering a real
   row (BookingDetail.tsx) and the Supabase half of B4. Credentials are in the file's own header;
   delete the file to revert.
+  FURTHER DISSOLVED AT B4 (2026-08-19): the API half was soft too. Validation runs BEFORE any Supabase
+  call, so without a database a rejected request answers 400 and an accepted one reaches
+  createServerClient() and dies 500 - a clean two-valued signal that let every cap be tested in BOTH
+  directions locally. WHAT REMAINS GENUINELY UNPROVEN is only the write path AFTER validation, i.e. a
+  real booking landing in a real database. That still wants the user's Vercel preview or real creds.
 - (t) PROJECT (trap measured at B1, 2026-08-19): Next.js runs .env values through VARIABLE EXPANSION,
   and does so even for SINGLE-QUOTED values. A bcrypt hash starting `$2b$10$...` is therefore
   destroyed on load - `$2b`, `$10` and the following `$...` run are each replaced with an empty
@@ -206,7 +213,43 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~12:35: **B1 CLOSED** - the admin portal now reports failure honestly. Committed
+*Stamp 2026-08-19 ~12:50: **B4 CLOSED** - THE BOARD IS NOW EMPTY. Every phase A1/A1b/A2/B1-B6/C1-C3
+is complete; there is NO pending or proposed row left, so the loop STOPS here and waits for the human.
+Do NOT invent new phases without the user asking. Committed locally, NOT pushed. What a fresh context
+cannot re-derive:*
+
+- ***NOTHING IS PUSHED AND THAT IS DELIBERATE.*** *main auto-deploys to the LIVE site
+  (www.starlettattoos.ink) via Vercel. The user's standing instruction is that pushing is THEIR
+  greenlight. The repo is many commits ahead of origin/main on purpose.*
+- *B4's stated blocker turned out to be SOFT, same lesson as B1: validation runs BEFORE any Supabase
+  call, so locally a rejected request answers 400 and an accepted one reaches createServerClient() and
+  dies 500. That two-valued signal let the caps be tested in BOTH directions with no database. Probe
+  script kept at scratchpad/b4-probe.mjs (needs createRequire pointed at the project to resolve sharp).*
+- *CAPS WERE DERIVED FROM components/BookingFunnel.tsx, NOT INVENTED: it resizes to 1600px/JPEG q0.8
+  and passes files through untouched only when already <=1600px AND <=1.5MB, MAX_REFERENCE_PHOTOS = 3.
+  So real traffic is ~1.5MB/file worst case and the server caps (15MB/file, 40MB total, 6 photos) sit
+  ~10x above it. If anyone ever "tightens" these, re-derive from the funnel first - the expensive
+  failure mode is rejecting a real customer, not accepting a big file.*
+- *THE SECURITY HIGH IS CLOSED: uploads are re-encoded through sharp, so decoding IS the type check
+  and a non-image renamed .jpg WITH an image/jpeg MIME is refused (measured). extFromType() is gone -
+  the stored extension no longer comes from the caller's claimed type. New photo IDs/references are
+  stored as .jpg; OLD bookings are unaffected because the admin page signs whatever path is on the row.*
+- *Reorder routes previously discarded every Promise.all result, and Supabase reports failures in the
+  result rather than throwing - so every reorder returned ok:true regardless. That is the SERVER half
+  of B1's client-side revert-on-failure; the two only make sense together. Do not "simplify" either.*
+- *Delete routes keep row-first ordering ON PURPOSE (orphan = invisible + quota cost; the reverse =
+  broken image on the public site). Storage-removal failures are now logged by name, which matters
+  most for bookings because those files are client photo IDs.*
+- *RESIDUAL GAP, told to the user plainly: no booking has been submitted end-to-end against a real
+  database. Proven = realistic submissions pass every check and abusive ones are refused. NOT proven =
+  the write path afterwards. Still needs real Supabase creds; recommend the user do this on a Vercel
+  preview or supply creds locally before pushing.*
+- *The .env.local from B1 is STILL PRESENT (auth only, invented values, gitignored). Delete to revert.*
+- *Dev server RUNNING on port 3000 (serverId 52f20abe-2d8b-418f-b26b-e7540debff51). build.ps1 REFUSES
+  while it holds the port. Rate limiter is 5/hr and in-process, so probe batches need a restart between
+  them (a live demonstration of ledger s).*
+
+*(prior stamp, still accurate:) Stamp 2026-08-19 ~12:35: **B1 CLOSED** - the admin portal now reports failure honestly. Committed
 locally, NOT pushed. Board: A1/A1b/A2/B1/B2/B3/B5/B6/C1/C2/C3 complete; only B4 remains, and it is
 STILL the user's call. What a fresh context cannot re-derive:*
 

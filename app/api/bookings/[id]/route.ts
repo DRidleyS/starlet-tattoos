@@ -6,6 +6,22 @@ import {
   cancelScheduledEmail,
 } from "@/lib/send-client-emails";
 
+// The admin UI offers exactly these, but the UI is not the guard — this route
+// is reachable directly. An unrecognised status would sit in the database
+// breaking the list page's badges and the completed-status follow-up logic.
+const STATUSES = [
+  "new",
+  "contacted",
+  "booked",
+  "completed",
+  "cancelled",
+] as const;
+
+const MAX_NOTES_CHARS = 10000;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type FollowupState = {
   emailId: string | null;
   scheduledFor: string | null;
@@ -29,17 +45,59 @@ export async function PATCH(
   }
   try {
     const { id } = await params;
-    const body = await req.json();
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ error: "Invalid booking id" }, { status: 400 });
+    }
+
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
     const supabase = createServerClient();
 
     const updates: Record<string, unknown> = {};
-    if (body.status !== undefined) updates.status = body.status;
-    if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.status !== undefined) {
+      if (
+        typeof body.status !== "string" ||
+        !(STATUSES as readonly string[]).includes(body.status)
+      ) {
+        return NextResponse.json({ error: "Unknown status" }, { status: 400 });
+      }
+      updates.status = body.status;
+    }
+    if (body.notes !== undefined) {
+      if (typeof body.notes !== "string") {
+        return NextResponse.json({ error: "Invalid notes" }, { status: 400 });
+      }
+      if (body.notes.length > MAX_NOTES_CHARS) {
+        return NextResponse.json(
+          { error: `Notes are too long (max ${MAX_NOTES_CHARS} characters).` },
+          { status: 400 }
+        );
+      }
+      updates.notes = body.notes;
+    }
 
     const followupAction = body.followupAction as
       | "schedule"
       | "cancel"
       | undefined;
+
+    if (
+      followupAction !== undefined &&
+      followupAction !== "schedule" &&
+      followupAction !== "cancel"
+    ) {
+      return NextResponse.json(
+        { error: "Unknown follow-up action" },
+        { status: 400 }
+      );
+    }
 
     if (Object.keys(updates).length === 0 && !followupAction) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
@@ -63,7 +121,11 @@ export async function PATCH(
         .eq("id", id);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error("Booking update error:", error);
+        return NextResponse.json(
+          { error: "Could not save your changes" },
+          { status: 500 }
+        );
       }
     }
 
@@ -151,6 +213,9 @@ export async function DELETE(
   }
   try {
     const { id } = await params;
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ error: "Invalid booking id" }, { status: 400 });
+    }
     const supabase = createServerClient();
 
     // Get booking to find storage paths and any pending follow-up
@@ -179,7 +244,11 @@ export async function DELETE(
     const { error } = await supabase.from("bookings").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("Booking delete error:", error);
+      return NextResponse.json(
+        { error: "Could not delete the booking" },
+        { status: 500 }
+      );
     }
 
     // Delete all files from storage: everything in the booking's folder
@@ -203,7 +272,21 @@ export async function DELETE(
       }
 
       if (paths.size > 0) {
-        await supabase.storage.from("booking-uploads").remove([...paths]);
+        // These are the client's photo ID, signature and consent form, so a
+        // silent failure here leaves identity documents in the bucket after the
+        // owner believes the booking was erased. The row is already gone, so
+        // the delete stands — but the leftovers are named in the log rather
+        // than discarded.
+        const { error: storageErr } = await supabase.storage
+          .from("booking-uploads")
+          .remove([...paths]);
+        if (storageErr) {
+          console.error(
+            `Booking ${id} row deleted but its files REMAIN in storage ` +
+              `(${[...paths].join(", ")}) - remove them manually:`,
+            storageErr
+          );
+        }
       }
     }
 

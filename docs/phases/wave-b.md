@@ -167,3 +167,93 @@ than guessing, and fixed by backslash-escaping each `$`. This will bite anyone p
 Gates: `RESULT: OK tsc=0 eslint=0`, `RESULT: OK exit=0 buildId=CMrvrzVBL4fJl3kGcHcPo`. The gate also
 earned its keep here — it failed the first run on a raw `<a>` in the new error boundary
 (`@next/next/no-html-link-for-pages`), fixed to `<Link>`.
+
+## B4 — stop the API accepting anything anyone sends it  [done, caps proven in both directions]
+
+Started on the harness's nudge, but the real unlock was noticing that the stated blocker was weaker
+than assumed: **validation runs BEFORE any Supabase call**, so locally a rejected request answers 400
+and an accepted one reaches `createServerClient()` and dies 500. That gives a clean two-valued signal
+without a database — 400 means "validation rejected it", 500 means "validation passed it end to end".
+So the caps could be tested in BOTH directions after all.
+
+### Caps were sized from the funnel, not invented
+
+`components/BookingFunnel.tsx` resizes every image to 1600px / JPEG q0.8 and passes a file through
+untouched ONLY when it is already <=1600px AND <=1.5MB, capping references at 3 (`MAX_REFERENCE_PHOTOS`).
+So a genuine submission is one photo ID plus at most 3 files of ~1.5MB worst case. Chosen limits:
+15MB per file (~10x the largest realistic one), 40MB total, 6 reference photos (double the funnel's
+own cap), 5000-char description, 320-char email, 2MB signature/initials data URLs. Every one sits far
+above real traffic on purpose — turning away a real customer is the expensive failure here.
+
+### What was actually wrong
+
+`app/api/bookings/route.ts` (the public one, and the security HIGH)
+- NO size, count or type limit on uploads, and files were buffered whole with
+  `Buffer.from(await file.arrayBuffer())`. RLS is off and the app is service-role only (ledger a), so
+  this validation is the only guard, against a project already near its storage quota (ledger b).
+- Uploads ran INLINE as fields were read, so a request that failed partway still left orphaned files
+  in the bucket. Now every check runs first and nothing touches storage until all of them pass.
+- The stored file extension came from `extFromType(file.type)` — the caller's CLAIMED MIME. Now every
+  image goes through sharp and is stored as a real `.jpg`; decoding IS the type check, so a video (or
+  a shell script) renamed `.jpg` cannot survive. This also bounds what LANDS in storage regardless of
+  what was sent. `extFromType` is gone.
+- `initialsPngDataUrl` / `signaturePngDataUrl` were arbitrary strings flowing straight into a Buffer
+  and an upload; now shape- and size-checked.
+- Text fields were unbounded and the email unvalidated (permissive regex — a strict one's failure mode
+  is rejecting a real customer).
+
+`app/api/gallery/route.ts` — the public GET echoed the raw Postgres error message (table/column names)
+to anyone who called it. `category` flowed unchecked into a STORAGE PATH (`${category}/${id}.jpg`), so
+it is now matched against a fixed list rather than sanitised. Added a size cap, an alt-text cap, a
+try/catch, and a 400 (not an opaque 500) when sharp can't decode. If the DB insert fails after upload,
+the uploaded object is now removed rather than orphaned.
+
+Reorder routes (gallery + videos) — `await Promise.all(updates)` DISCARDED every result. Supabase
+reports a failed update in the result rather than throwing, so every reorder returned `ok: true` even
+when nothing was written. This is the exact server-side counterpart to B1: the admin page now reverts
+its optimistic move on a non-2xx, which is only meaningful if a 2xx actually means something. Also
+added JSON guards, UUID validation, and a 500-id cap (one statement is issued per id).
+
+Delete routes (gallery + videos + bookings) — storage `remove()` results were discarded. The row is
+still deleted first ON PURPOSE (an orphaned file is invisible and costs quota; a surviving row pointing
+at a deleted file would be a broken image on the public site), but leaks are now logged by name. For
+bookings this matters most: those files are the client's photo ID and signature, so a silent failure
+leaves identity documents in the bucket after the owner believes the booking was erased.
+
+`app/api/bookings/[id]/route.ts` — `status` was written to the database with no validation at all;
+now checked against the five real statuses. Notes capped, ids UUID-checked, JSON guarded,
+`followupAction` validated, raw error messages replaced with generic ones.
+
+`app/api/videos/route.ts` — `video_url` was stored unvalidated and is rendered as a `<video src>` on
+the PUBLIC homepage, so it is now pinned to this project's own Supabase storage origin.
+`app/api/videos/upload-url/route.ts` — the extension came from the caller's filename and the bucket is
+public, which made the studio's domain a host for arbitrary files; now chosen from a video whitelist.
+
+### Verified in both directions (7 probes, scratchpad b4-probe.mjs)
+
+REALISTIC — must NOT be rejected:
+- 1 photo ID + 2 reference photos + normal text -> **500** (passed all validation, died at the absent DB)
+- minimal submission, no photos at all -> **500** (same)
+
+ABUSE — must be rejected, with a message safe to show the public:
+- one 16MB file -> **400** "Each photo must be under 15MB."
+- 7 reference photos -> **400** "Please attach at most 6 reference photos."
+- non-image bytes renamed `.jpg` WITH an `image/jpeg` MIME -> **400** "Your photo ID could not be read
+  as an image. Please upload a JPG or PNG." (the claimed type cannot lie past sharp — this is the HIGH)
+- malformed email -> **400**; 6000-char description -> **400**
+
+The rate limiter caps this at 5/hour from one IP, so the probes ran in two batches with a dev-server
+restart between them to clear the in-process window — itself a live demonstration of ledger (s).
+
+Public regression: homepage renders (33 images, no overflow), booking funnel renders Step 1/11 with
+the title template, console shows only the expected Supabase 500s.
+
+### Residual gap, stated plainly
+
+No booking has been submitted end-to-end against a real database, because local dev has no Supabase.
+What IS proven: realistic submissions pass every new check, and abusive ones are refused. What is NOT
+proven: that the write path still succeeds afterwards — though that path is unchanged except that
+photo ID and reference photos are now stored as re-encoded `.jpg`. Old bookings are unaffected: the
+admin page signs whatever path is recorded on each row.
+
+Gates: `RESULT: OK tsc=0 eslint=0`, `RESULT: OK exit=0 buildId=YVu6XAi4A37M68ggKTFqd`.

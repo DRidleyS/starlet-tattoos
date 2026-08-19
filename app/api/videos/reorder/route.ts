@@ -2,23 +2,63 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase-server";
 import { auth } from "@/lib/auth";
 
+// One statement per id, so the list is bounded.
+const MAX_IDS = 500;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const supabase = createServerClient();
-  const { orderedIds } = (await req.json()) as { orderedIds: string[] };
+  try {
+    const supabase = createServerClient();
 
-  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
-    return NextResponse.json({ error: "orderedIds required" }, { status: 400 });
+    let orderedIds: unknown;
+    try {
+      ({ orderedIds } = await req.json());
+    } catch {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
+
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      return NextResponse.json(
+        { error: "orderedIds required" },
+        { status: 400 }
+      );
+    }
+    if (orderedIds.length > MAX_IDS) {
+      return NextResponse.json({ error: "Too many items" }, { status: 400 });
+    }
+    if (!orderedIds.every((id) => typeof id === "string" && UUID_RE.test(id))) {
+      return NextResponse.json({ error: "Invalid video id" }, { status: 400 });
+    }
+
+    const results = await Promise.all(
+      (orderedIds as string[]).map((id, index) =>
+        supabase.from("videos").update({ sort_order: index }).eq("id", id)
+      )
+    );
+
+    // Failures are reported in the result, not thrown — discarding them made
+    // every reorder claim success. See the gallery reorder route.
+    const failed = results.filter((r) => r.error);
+    if (failed.length > 0) {
+      console.error("Video reorder errors:", failed.map((r) => r.error));
+      return NextResponse.json(
+        { error: "Could not save the new order" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("Video reorder error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  const updates = orderedIds.map((id, index) =>
-    supabase.from("videos").update({ sort_order: index }).eq("id", id)
-  );
-
-  await Promise.all(updates);
-
-  return NextResponse.json({ ok: true });
 }
