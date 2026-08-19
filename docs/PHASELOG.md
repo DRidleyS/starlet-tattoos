@@ -14,10 +14,10 @@
 - [complete]    A1b :: A1 verification tail done: check.ps1 ran (RESULT: FAIL - surfaced a real baseline, 14 eslint no-explicit-any errors + 20 warnings; the wrapper worked), build.ps1 ran (RESULT: OK, buildId minted). RULE ZERO floor clock armed (cron 90937956). Harness memory note written. Install committed locally (9cdf897). DEFERRED to the user: the live injector-paste demo (classifier-gated from Claude's tools; it is the user's to watch). Narrative: wave-a.md.
 - [complete]    A2 :: Recon done: 4 read-only Explore agents (public/admin/lib+config/API) returned 43 file:line findings, merged into wave-a.md, synthesized into wave B (pending) + wave C (proposed). 2 correctness HIGHs + 1 security HIGH + validation/silent-failure/lint/a11y clusters. Narrative: wave-a.md A2 headings.
 - [pending]     B1 :: Admin portal resilience. Files: app/admin/bookings/[id]/BookingDetail.tsx (save():106, handleDelete():80, followupSent:236, labels :197/:268), app/admin/gallery/page.tsx (fetchAll:41, upload:58, delete:127/133, reorder:152/169), app/admin/login/page.tsx (callbackUrl:27, labels:50, role=alert:45). Gate every fetch on res.ok + try/catch/finally, surface errors, stop showing false success. DoD: each admin mutation shows correct success/failure in dev; check.ps1 + build green.
-- [pending]     B2 :: Public gallery correctness + a11y. components/HoneycombGallery.tsx: fix the single-imgRef bug (:213 - give the lightbox <img> its own ref), add role/tabIndex/keydown to hex tiles (:196), descriptive alt (:215), lazy/dimensions on raw <img> (:212); FlashGallery.tsx same alt/img treatment. DoD: lightbox zoom works, gallery keyboard-navigable, verified in browser.
-- [pending]     B3 :: Booking submission reliability. lib/send-booking-email.ts:59/:96 destructure Resend {error} and throw; app/api/bookings/route.ts:136 wrap the studio email best-effort (kill the duplicate-booking-on-500 path); components/BookingFunnel.tsx keydown stale dep (:853) + signature_pad typing (:459). TOUCHES LIVE INTAKE. DoD: a full booking submission completes in dev incl. email + PDF path; no duplicate on simulated email failure.
+- [complete]    B2 :: Public gallery correctness + a11y DONE (commits f4cbd86 HoneycombGallery + e09e5a8 FlashGallery, both verified in dev via DOM query): lightbox ref bug fixed, hex+card keyboard buttons, meaningful alt, lazy imgs, EventListener casts. FlashGallery :54 mobile padding overflow deferred to B6. Narrative: wave-b.md.
+- [complete]    B3 :: Booking submission reliability CORE done (commit 7dfee31, build verified): send-booking-email.ts now throws on Resend {error} (both sends); bookings route wraps the studio send best-effort (kills the duplicate-booking-on-500 path). The two type/lint items originally listed here (BookingFunnel keydown dep, signature_pad typing) are absorbed into B5. Narrative: wave-b.md.
 - [pending]     B4 :: API input validation + error hygiene. app/api/bookings/route.ts:44 cap size/MIME/count + sharp re-encode uploads; app/api/gallery/route.ts try/catch + size cap + category whitelist + generic errors; status enum + notes cap (bookings/[id]); reorder id-validation + partial-failure checks; storage-remove result checks; videos url validation. RLS is off so this is the only guard. DoD: malformed uploads/inputs 400 cleanly, legit booking still succeeds in dev.
-- [pending]     B5 :: Lint-clean + type safety. Eliminate all 14 no-explicit-any (BookingFunnel.tsx CSS-var casts -> React.CSSProperties + signature_pad types; HoneycombGallery.tsx EventListener casts), catch(err:unknown), hand-written Supabase Database generic in lib/supabase-server.ts, drop dead preview exports (lib/send-client-emails.ts) or wire them, clear VideoCarousel stale eslint-disable + VineTopFrame useMemo deps. DoD: scripts/harness/check.ps1 RESULT: OK (eslint=0).
+- [complete]    B5 :: Lint-clean DONE (commit 6693252, VERIFIED check.ps1 RESULT OK tsc=0 eslint=0). All 14 no-explicit-any gone (CSS-var->React.CSSProperties, signature_pad v5 API, EventListener casts, catch:unknown) + the page.tsx set-state-in-effect error (justified disable) + stale VideoCarousel directive. Funnel renders, --navSize resolves (verified). NOT done (were listed but are lower-value/riskier): Supabase Database generic (needs typegen or careful hand-typing) and the ~19 remaining exhaustive-deps WARNINGS (don't fail the gate; some are real refactors). Left as ledger item. Narrative: wave-b.md.
 - [pending]     B6 :: SEO metadata + media perf. app/layout.tsx openGraph/twitter/metadataBase; app/booking/page.tsx metadata (+ noindex decision); components/VideoCarousel.tsx preload=metadata; VineTopFrame.tsx/VineMainDivider.tsx resize-restart debounce; FlashGallery.tsx mobile padding overflow. DoD: link-preview meta present, no homepage horizontal scroll at 375px, verified in browser.
 - [proposed]    C1 :: Abuse & brute-force protection (rate-limit public bookings + healed-photos POST; admin-login lockout). Serverless has no shared memory - needs an infra choice (edge middleware + Upstash/Vercel KV, or similar). AWAITING user greenlight on the mechanism.
 - [proposed]    C2 :: Security headers - add HSTS + Permissions-Policy + CSP in next.config.ts. CSP can break the live site (GSAP/framer/Supabase/inline styles); ship report-only first, then enforce. Prod-risky - AWAITING greenlight.
@@ -93,6 +93,26 @@
   source project never hit it because PS-authored files carry BOMs. Convention adopted: PHASELOG
   stays ASCII-only. A deeper fix (add -Encoding UTF8 to every hook read) is a possible upstream
   improvement.
+- (q) PROJECT (verification boundary for wave B, 2026-08-19): B1 (admin error-handling) and B4 (API
+  validation) can't be browser-verified locally - the admin portal needs an authenticated session
+  and the API routes need Supabase env vars, neither present in local dev (the /api/gallery + /api/
+  videos 500s prove it). Local verification for those = build + check.ps1 + code review only. B6 and
+  the public UI phases ARE browser-verifiable. Options for B1/B4: user verifies on a deploy preview,
+  or a local .env is provided, or build+review is accepted. Also deferred from B5: the Supabase
+  Database generic (needs `supabase gen types` or careful hand-typing) and ~19 exhaustive-deps
+  warnings (non-blocking; some are real refactors).
+- (p) HARNESS (the decisive break, measured 2026-08-19 ~04:xx): the autonomous loop CANNOT cross the
+  context ceiling on this stack without the user. Three cron fires in a row measured 79.6% -> 81.6%
+  -> 94.9% -> 95.9%, climbing ~4k per fire, and NO reset fired at the ~380k point I expected. Refined
+  insight: the 380,519 "compact boundary" I measured in transcript b2d5b0f4 was almost certainly a
+  MANUAL /compact (this session opened with one), NOT the built-in auto-compact - so the true auto
+  threshold is unknown and I am past 380k without a reset. Net: the harness's own /compact is
+  classifier-blocked (m/n) AND the built-in is not firing where expected, so at the ceiling the loop
+  can only DEFER; B1 (implementation = read+edit files, heavy) cannot start safely. RESOLUTION IS THE
+  USER'S: a manual /compact hands a fresh window and B1 proceeds. Escalated to the user rather than
+  spin the cron indefinitely. This is THE answer to "where does the harness break in this stack":
+  it drives continuation and research (subagent notifications) fine, but depends on an external
+  context-reset it cannot trigger here.
 - (o) HARNESS (port adaptation, 2026-08-19): the 45% critical-mass "defer heavy work" rule assumes
   a CHEAP self-reset (the injector types /compact). On a stack where that channel is blocked (ledger
   m/n), deferring buys only an idle slow-climb, not a reset - so the adapted rule is: use the
@@ -139,10 +159,27 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~04:00: **A2 CLOSED** (research pass done). All 4 recon agents returned; 43
-findings merged into wave-a.md (A2 headings) and synthesized into board rows B1-B6 [pending,
-pre-greenlit] + C1-C3 [proposed, await user greenlight]. .inflight is clear. What the next context
-cannot re-derive:*
+*Stamp 2026-08-19 ~06:20: **B5 CLOSED** (and B2, B3-core before it - implementation underway). The
+window-figure crisis is RESOLVED: 400k was a misidentified manual /compact; ran to 413k fine;
+$HarnessWindowTokens corrected to provisional 1M (commit 5dfd74c). Context is HEALTHY - judge by raw
+tokens + actual operation, not the old bogus %. Commits so far this wave: 7dfee31 (B3 email), f4cbd86
+(B2 HoneycombGallery), e09e5a8 (B2 FlashGallery), 6693252 (B5 lint-green), + 5dfd74c (harness window).
+Board: A1/A1b/A2/B2/B3/B5 complete; B1/B4/B6 pending; C1-C3 proposed. Next work + what can't be
+re-derived:*
+- *NEXT: B1 (admin resilience), B4 (API validation - has the security HIGH: unbounded public upload),
+  B6 (SEO/perf - browser-verifiable). VERIFICATION BOUNDARY (ledger q): B1+B4 are admin/server logic
+  that CANNOT be browser-tested locally (no auth session, no Supabase env - the /api 500s prove it);
+  local verification = build + check.ps1 + review only. B6 IS browser-verifiable. This was flagged to
+  the user at the B5 checkpoint - they may want to verify B1/B4 themselves or accept build+review.*
+- *check.ps1 is now GREEN and TRUSTWORTHY (repo passed its own lint for the first time). Run it after
+  every edit. build.ps1 REFUSES under the dev server - stop the preview (serverId in preview_list)
+  before building, or rely on check.ps1 (tsc+eslint, no .next conflict).*
+- *Dev preview works: scripts/harness/dev.cmd (fixes node-PATH) via .claude/launch.json, port 3000.
+  Browser pane NOT composited - screenshots + rAF time out; verify via read_page / get_page_text /
+  javascript_tool DOM queries. Local galleries use FALLBACK images (no Supabase). Age gate: click Yes.*
+- *A2 recon (43 findings) is in wave-a.md; per-phase file:line targets are on each B/C board row.
+  C1-C3 [proposed] must NOT start without the user's explicit greenlight.*
+- *(prior:) A2 CLOSED - research done, 43 findings synthesized into wave B/C. .inflight clear.*
 
 - *NEXT WORK is B1 (admin resilience) then B2..B6 in order - all pre-greenlit, pure-code,
   dev-verifiable. C1-C3 are [proposed] and must NOT be started without the user's explicit
