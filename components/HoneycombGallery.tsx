@@ -82,6 +82,13 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
     const el = imgRef.current;
     if (!el) return;
 
+    // Each newly-opened or navigated-to image starts unzoomed and centred, so a
+    // zoom left over from the previous image does not carry across.
+    pinchState.current.scale = 1;
+    pinchState.current.panX = 0;
+    pinchState.current.panY = 0;
+    el.style.transform = "";
+
     const apply = () => {
       const s = pinchState.current.scale;
       const x = pinchState.current.panX;
@@ -158,9 +165,9 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
     el.addEventListener("touchend", onTouchEnd);
 
     return () => {
-      el.removeEventListener("touchstart", onTouchStart as any);
-      el.removeEventListener("touchmove", onTouchMove as any);
-      el.removeEventListener("touchend", onTouchEnd as any);
+      el.removeEventListener("touchstart", onTouchStart as EventListener);
+      el.removeEventListener("touchmove", onTouchMove as EventListener);
+      el.removeEventListener("touchend", onTouchEnd as EventListener);
     };
   }, [selected]);
 
@@ -196,7 +203,16 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
             <div
               key={i}
               className={`hex-wrap ${isActive ? "active" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={it.alt || `View tattoo work ${i + 1}`}
               onClick={() => openOverlay(i)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openOverlay(i);
+                }
+              }}
               onMouseEnter={() => setActive((s) => ({ ...s, [i]: true }))}
               onMouseLeave={() => setActive((s) => ({ ...s, [i]: false }))}
               style={{
@@ -210,15 +226,18 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
             >
               <div className={`hex ${isActive ? "active" : ""}`} aria-hidden>
                 <img
-                  ref={imgRef}
                   src={it.paper}
-                  alt={it.alt || `gallery ${i}`}
+                  alt={it.alt || `Tattoo work ${i + 1}`}
                   className="hex-img base"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <img
                   src={it.onBody}
-                  alt={it.alt || `gallery ${i} on body`}
+                  alt={it.alt ? `${it.alt} (on skin)` : `Tattoo work ${i + 1} on skin`}
                   className={`hex-img overlay ${isActive ? "show" : ""}`}
+                  loading="lazy"
+                  decoding="async"
                 />
                 <svg
                   className="hex-stroke"
@@ -395,8 +414,9 @@ export default function HoneycombGallery({ items = [] }: { items?: Item[] }) {
             <ChevronRight size={36} strokeWidth={2.5} aria-hidden />
           </button>
           <img
+            ref={imgRef}
             src={items[selected].onBody || items[selected].paper}
-            alt={items[selected].alt || `gallery ${selected}`}
+            alt={items[selected].alt || `Tattoo work ${selected + 1}`}
             className="hc-img"
             onClick={(e) => e.stopPropagation()}
           />

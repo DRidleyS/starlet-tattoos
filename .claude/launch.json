@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "starlet-dev",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "scripts\\harness\\dev.cmd"],
+      "port": 3000
+    }
+  ]
+}
