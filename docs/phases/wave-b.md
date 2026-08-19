@@ -61,11 +61,13 @@ The repo did NOT pass its own `npm run lint` (14 errors); now it does (tsc=0, es
 
 ## Remaining wave B (B1 admin, B4 API, B6 SEO/perf) — a verification boundary
 
-B1 (admin error-handling) and B4 (API validation) are server/admin logic that CANNOT be
-browser-verified locally: the admin portal needs an authenticated session and the API routes need
-Supabase env vars, neither of which exist in local dev (see the 500s above). Local verification for
-those phases is limited to build + check.ps1 + code review. B6 (SEO metadata + media perf + the
-FlashGallery mobile padding) IS browser-verifiable. Flagged to the user at the B5 checkpoint.
+B6 is now DONE (commit 413670e, browser-verified: og:/twitter: tags in the head, no 375px overflow).
+The two remaining phases are BLOCKED on a user decision, so the loop STOPPED and the floor cron was
+deleted. B1 (admin error-handling) and B4 (API validation, incl. the security HIGH) are server/admin
+logic that CANNOT be browser-verified locally: the admin portal needs an authenticated session and
+the API routes need Supabase env vars, neither present in local dev (the /api 500s prove it). Options
+given to the user: (a) accept build+review, (b) provide a local .env, (c) hold them. C1-C3 [proposed]
+await a greenlight. Resume when the user chooses.
 
 ## Verification environment note
 

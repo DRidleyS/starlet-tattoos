@@ -13,10 +13,11 @@
 - [complete]    A1 :: Harness ported from D:\claude-phase-harness + adapted (400k measured window, empty busy list, UAT neutered) + every gate verified in the failing direction (master switch, token gate both halves, freshness gate, busy reaps, injector REFUSED choke point, build wrapper dev-server fence). Two source-kit bugs found+fixed (census regex, nudge_line path), encoding + orphan-detector findings logged. Closed at 81% context under the harness's own critical-mass rule. Narrative: wave-a.md.
 - [complete]    A1b :: A1 verification tail done: check.ps1 ran (RESULT: FAIL - surfaced a real baseline, 14 eslint no-explicit-any errors + 20 warnings; the wrapper worked), build.ps1 ran (RESULT: OK, buildId minted). RULE ZERO floor clock armed (cron 90937956). Harness memory note written. Install committed locally (9cdf897). DEFERRED to the user: the live injector-paste demo (classifier-gated from Claude's tools; it is the user's to watch). Narrative: wave-a.md.
 - [complete]    A2 :: Recon done: 4 read-only Explore agents (public/admin/lib+config/API) returned 43 file:line findings, merged into wave-a.md, synthesized into wave B (pending) + wave C (proposed). 2 correctness HIGHs + 1 security HIGH + validation/silent-failure/lint/a11y clusters. Narrative: wave-a.md A2 headings.
-- [pending]     B1 :: Admin portal resilience. Files: app/admin/bookings/[id]/BookingDetail.tsx (save():106, handleDelete():80, followupSent:236, labels :197/:268), app/admin/gallery/page.tsx (fetchAll:41, upload:58, delete:127/133, reorder:152/169), app/admin/login/page.tsx (callbackUrl:27, labels:50, role=alert:45). Gate every fetch on res.ok + try/catch/finally, surface errors, stop showing false success. DoD: each admin mutation shows correct success/failure in dev; check.ps1 + build green.
+- [pending]     B1 :: [AWAITING USER DECISION - verification approach, ledger q] Admin portal resilience. Files: app/admin/bookings/[id]/BookingDetail.tsx (save():106, handleDelete():80, followupSent:236, labels :197/:268), app/admin/gallery/page.tsx (fetchAll:41, upload:58, delete:127/133, reorder:152/169), app/admin/login/page.tsx (callbackUrl:27, labels:50, role=alert:45). Gate every fetch on res.ok + try/catch/finally, surface errors, stop showing false success. Can't browser-verify locally (no auth session) - needs user's OK for build+review, or a local .env. DoD: check.ps1 + build green + admin mutations reviewed.
 - [complete]    B2 :: Public gallery correctness + a11y DONE (commits f4cbd86 HoneycombGallery + e09e5a8 FlashGallery, both verified in dev via DOM query): lightbox ref bug fixed, hex+card keyboard buttons, meaningful alt, lazy imgs, EventListener casts. FlashGallery :54 mobile padding overflow deferred to B6. Narrative: wave-b.md.
 - [complete]    B3 :: Booking submission reliability CORE done (commit 7dfee31, build verified): send-booking-email.ts now throws on Resend {error} (both sends); bookings route wraps the studio send best-effort (kills the duplicate-booking-on-500 path). The two type/lint items originally listed here (BookingFunnel keydown dep, signature_pad typing) are absorbed into B5. Narrative: wave-b.md.
-- [pending]     B4 :: API input validation + error hygiene. app/api/bookings/route.ts:44 cap size/MIME/count + sharp re-encode uploads; app/api/gallery/route.ts try/catch + size cap + category whitelist + generic errors; status enum + notes cap (bookings/[id]); reorder id-validation + partial-failure checks; storage-remove result checks; videos url validation. RLS is off so this is the only guard. DoD: malformed uploads/inputs 400 cleanly, legit booking still succeeds in dev.
+- [pending]     B4 :: [AWAITING USER DECISION - verification approach, ledger q] API input validation + error hygiene (contains the security HIGH). app/api/bookings/route.ts:44 cap size/MIME/count + sharp re-encode uploads; app/api/gallery/route.ts try/catch + size cap + category whitelist + generic errors; status enum + notes cap (bookings/[id]); reorder id-validation + partial-failure checks; storage-remove result checks; videos url validation. RLS is off so this is the only guard. Can't browser-verify locally (no Supabase env). DoD: check.ps1 + build green + routes reviewed.
+- [complete]    B6 :: SEO metadata + media perf DONE (commit 413670e, VERIFIED in dev): layout.tsx metadataBase+OpenGraph+Twitter+title template, booking-page metadata, FlashGallery p-40 -> responsive (no 375px horizontal overflow, verified), VideoCarousel inactive/peek videos preload=metadata (build-verified only - no local video data). Deferred: Vine resize-debounce (animation-internals, modest payoff; + its exhaustive-deps warnings). Narrative: wave-b.md.
 - [complete]    B5 :: Lint-clean DONE (commit 6693252, VERIFIED check.ps1 RESULT OK tsc=0 eslint=0). All 14 no-explicit-any gone (CSS-var->React.CSSProperties, signature_pad v5 API, EventListener casts, catch:unknown) + the page.tsx set-state-in-effect error (justified disable) + stale VideoCarousel directive. Funnel renders, --navSize resolves (verified). NOT done (were listed but are lower-value/riskier): Supabase Database generic (needs typegen or careful hand-typing) and the ~19 remaining exhaustive-deps WARNINGS (don't fail the gate; some are real refactors). Left as ledger item. Narrative: wave-b.md.
 - [pending]     B6 :: SEO metadata + media perf. app/layout.tsx openGraph/twitter/metadataBase; app/booking/page.tsx metadata (+ noindex decision); components/VideoCarousel.tsx preload=metadata; VineTopFrame.tsx/VineMainDivider.tsx resize-restart debounce; FlashGallery.tsx mobile padding overflow. DoD: link-preview meta present, no homepage horizontal scroll at 375px, verified in browser.
 - [proposed]    C1 :: Abuse & brute-force protection (rate-limit public bookings + healed-photos POST; admin-login lockout). Serverless has no shared memory - needs an infra choice (edge middleware + Upstash/Vercel KV, or similar). AWAITING user greenlight on the mechanism.
@@ -159,13 +160,25 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~06:20: **B5 CLOSED** (and B2, B3-core before it - implementation underway). The
-window-figure crisis is RESOLVED: 400k was a misidentified manual /compact; ran to 413k fine;
-$HarnessWindowTokens corrected to provisional 1M (commit 5dfd74c). Context is HEALTHY - judge by raw
-tokens + actual operation, not the old bogus %. Commits so far this wave: 7dfee31 (B3 email), f4cbd86
-(B2 HoneycombGallery), e09e5a8 (B2 FlashGallery), 6693252 (B5 lint-green), + 5dfd74c (harness window).
-Board: A1/A1b/A2/B2/B3/B5 complete; B1/B4/B6 pending; C1-C3 proposed. Next work + what can't be
-re-derived:*
+*Stamp 2026-08-19 ~06:30: **B6 CLOSED** - WAVE B CONVERGED. All browser-verifiable pre-greenlit work
+is done (B2 galleries, B3 email reliability, B5 lint-green, B6 SEO/perf). The loop has reached the
+point where EVERYTHING remaining needs the user, so the RULE ZERO floor cron was DELETED (per "a wave
+awaiting a human greenlight gets no timer") and the loop STOPS here. Commits this session: 5dfd74c
+(harness window fix), 7dfee31 (B3), f4cbd86 + e09e5a8 (B2), 6693252 (B5), 413670e (B6), + board
+commits. Board: A1/A1b/A2/B2/B3/B5/B6 complete. AWAITING USER:*
+- *B1 (admin) + B4 (API validation, has the security HIGH) are [pending] but BLOCKED on the user's
+  verification-approach decision (ledger q): they can't be browser-verified locally (no auth/Supabase
+  env). Options given to the user: (a) accept build+review, (b) provide a local .env, (c) hold them.
+  Do NOT start B1/B4 until the user answers - resume when they do, honoring their choice.*
+- *C1-C3 [proposed] await an explicit greenlight (rate-limiting mechanism, CSP report-only, next-auth
+  pin). Do NOT start without it.*
+- *To resume after the user responds: re-read this board; check.ps1 is the green gate (run after every
+  edit); build.ps1 refuses under the dev server (stop the preview first). Dev preview via
+  scripts/harness/dev.cmd + .claude/launch.json (port 3000); pane not composited so verify via DOM
+  queries. If re-arming autonomous operation, re-create the floor cron ("11,41 * * * *") per CLAUDE.md
+  RULE ZERO. Full trace in wave-a.md (research) + wave-b.md (implementation).*
+- *(prior context, still valid:) window figure was corrected from a bad 400k to provisional 1M
+  (5dfd74c); the 43-finding recon is in wave-a.md; per-phase file:line targets are on each board row.*
 - *NEXT: B1 (admin resilience), B4 (API validation - has the security HIGH: unbounded public upload),
   B6 (SEO/perf - browser-verifiable). VERIFICATION BOUNDARY (ledger q): B1+B4 are admin/server logic
   that CANNOT be browser-tested locally (no auth session, no Supabase env - the /api 500s prove it);
