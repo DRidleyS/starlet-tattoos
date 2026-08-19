@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase-server";
 import { generateConsentForm } from "@/lib/generate-consent-form";
 import { sendBookingEmail } from "@/lib/send-booking-email";
+import { sendPreAppointmentEmail } from "@/lib/send-client-emails";
 
 // PDF + image generation depend on the Node.js runtime (sharp / pdf-lib).
 export const runtime = "nodejs";
@@ -140,6 +141,15 @@ export async function POST(req: NextRequest) {
         referencePhotos: refBuffers.length > 0 ? refBuffers : undefined,
       }
     );
+
+    // Confirmation + pre-appointment instructions to the client. Best-effort:
+    // the booking is already saved and the studio notified, so don't fail the
+    // request over this.
+    try {
+      await sendPreAppointmentEmail({ fullName, email });
+    } catch (emailErr) {
+      console.error("Pre-appointment email error:", emailErr);
+    }
 
     return NextResponse.json({ success: true, bookingId });
   } catch (err) {

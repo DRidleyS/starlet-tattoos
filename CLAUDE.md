@@ -76,7 +76,13 @@ created_at  timestamp
 - `/admin/bookings/[id]` — view full submission, edit status + private notes (`PATCH /api/bookings/{id}`), or delete the booking which also wipes its files in the `booking-uploads` bucket (`DELETE /api/bookings/{id}`).
 - Attachments are served via short-lived signed URLs since `booking-uploads` is a private bucket.
 
-Booking submissions come in through `POST /api/bookings`: files go to `booking-uploads/{bookingId}/…`, a consent form PNG is generated server-side (`lib/generate-consent-form.ts`), and Resend emails the consent form + reference photos to the studio inbox.
+Booking submissions come in through `POST /api/bookings`: files go to `booking-uploads/{bookingId}/…`, a consent form **PDF** is generated server-side (`lib/generate-consent-form.ts`; copy in `lib/consent-content.ts` shared with the on-screen checklist, script logo inlined in `lib/consent-logo.ts`, signature/initials PNGs trimmed with sharp before placement), and Resend emails the consent form + reference photos to the studio inbox. The client also gets a confirmation email with pre-appointment instructions + the aftercare card (`lib/send-client-emails.ts`; copy lives in `lib/appointment-content.ts`, shared with the funnel success screen).
+
+### Healing follow-up (healed photos + review)
+
+When the owner sets a booking's status to `completed`, the API schedules a check-in email to the client for **14 days later** via Resend scheduled sending (no cron). The email links to the client's private upload page `/healed/{bookingId}` (the unguessable booking id is the access token — email replies are NOT assumed to work) and to a review page when `REVIEW_LINK` is set. Uploads hit `POST /api/healed-photos` (completed bookings only, ≤6 photos/submission, ≤12/booking, sharp re-encoded) and land in `booking-uploads/{bookingId}/healed-*.jpg`; the studio gets a notification email with the photos attached, and they render in a "Healed Photos" section on the admin booking page.
+
+The Resend email id + send time are stored on the booking (`followup_email_id`, `followup_scheduled_for` — added by `supabase/migrations/20260818_booking_followups.sql`). Moving the status away from `completed`, cancelling via the button on the booking detail page, or deleting the booking cancels a still-pending follow-up; the detail page also shows scheduled/sent state and offers manual schedule/cancel (`PATCH /api/bookings/{id}` with `followupAction: "schedule" | "cancel"`).
 
 ## Environment variables
 
@@ -88,6 +94,8 @@ ADMIN_PASSWORD_HASH         # bcrypt hash
 RESEND_API_KEY
 EMAIL_FROM                  # optional, defaults to bookings@starlettattoos.ink
 EMAIL_TO                    # optional, defaults to bookings@starlettattoos.ink
+REVIEW_LINK                 # optional, review-page URL (e.g. Google review link) for the follow-up email + upload page
+SITE_URL                    # optional, public site origin for email links; falls back to NEXTAUTH_URL
 NEXTAUTH_SECRET
 NEXTAUTH_URL
 ```
@@ -109,12 +117,21 @@ NEXTAUTH_URL
 **Bookings API**
 - `app/api/bookings/route.ts` — public submission
 - `app/api/bookings/[id]/route.ts` — admin update/delete
+- `app/api/healed-photos/route.ts` — public healed-photo upload (link-token gated)
+
+**Healed photos page**
+- `app/healed/[id]/page.tsx`, `app/healed/[id]/HealedUpload.tsx`
 
 **Lib**
 - `lib/auth.ts` — next-auth config
 - `lib/supabase-server.ts` — service-role Supabase client
-- `lib/send-booking-email.ts` — Resend wrapper
-- `lib/generate-consent-form.ts` — consent form PNG renderer
+- `lib/send-booking-email.ts` — Resend wrappers (studio notifications: bookings, healed photos)
+- `lib/send-client-emails.ts` — client confirmation + scheduled healing follow-up
+- `lib/appointment-content.ts` — pre-appointment & aftercare instruction copy
+- `lib/consent-content.ts` — consent form copy (shared: funnel checklist + PDF)
+- `lib/consent-logo.ts` — inlined script logo for the PDF header
+- `lib/generate-consent-form.ts` — consent form PDF renderer
+- `lib/site-url.ts` — absolute site origin for email links
 
 **Public components**
 - `components/HoneycombGallery.tsx`

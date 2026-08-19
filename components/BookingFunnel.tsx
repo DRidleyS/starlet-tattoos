@@ -6,6 +6,7 @@ import SignaturePad from "signature_pad";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Home } from "lucide-react";
 import { CONSENT_ITEMS } from "@/lib/consent-content";
+import { PRE_APPOINTMENT_INSTRUCTIONS } from "@/lib/appointment-content";
 
 const ACCENT = "#b76e79";
 
@@ -1255,27 +1256,51 @@ export default function BookingFunnel() {
           {current.id === "review" && (
             <div className="mt-8 w-full max-w-2xl grid gap-4">
               {submitSuccess ? (
-                <div className="rounded-2xl border border-black/10 bg-white px-5 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
-                  <div className="text-sm font-medium text-black">
-                    {submitSuccessMessage || "Thanks — your request was sent."}
+                <>
+                  <div className="rounded-2xl border border-black/10 bg-white px-5 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
+                    <div className="text-sm font-medium text-black">
+                      {submitSuccessMessage || "Thanks — your request was sent."}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <BouncyButton
+                        type="button"
+                        className="px-5 py-2 rounded-full border border-black/15 text-sm hover:bg-black/5"
+                        onClick={() => router.push("/")}
+                      >
+                        Back to home
+                      </BouncyButton>
+                      <BouncyButton
+                        type="button"
+                        className="px-5 py-2 rounded-full border border-black/15 text-sm hover:bg-black/5"
+                        onClick={resetFunnel}
+                      >
+                        New request
+                      </BouncyButton>
+                    </div>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <BouncyButton
-                      type="button"
-                      className="px-5 py-2 rounded-full border border-black/15 text-sm hover:bg-black/5"
-                      onClick={() => router.push("/")}
-                    >
-                      Back to home
-                    </BouncyButton>
-                    <BouncyButton
-                      type="button"
-                      className="px-5 py-2 rounded-full border border-black/15 text-sm hover:bg-black/5"
-                      onClick={resetFunnel}
-                    >
-                      New request
-                    </BouncyButton>
+
+                  <div className="rounded-2xl border border-black/10 bg-white px-5 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
+                    <div className="text-sm font-semibold text-black">
+                      How to prepare for your appointment
+                    </div>
+                    <ul className="mt-3 grid gap-2">
+                      {PRE_APPOINTMENT_INSTRUCTIONS.map((item) => (
+                        <li
+                          key={item}
+                          className="flex gap-2.5 text-sm text-black/70"
+                        >
+                          <span aria-hidden style={{ color: ACCENT }}>
+                            ✦
+                          </span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 text-xs text-black/45">
+                      We&apos;ve also emailed a copy of these to you.
+                    </div>
                   </div>
-                </div>
+                </>
               ) : null}
 
               <div className="grid gap-3">

@@ -6,25 +6,27 @@ import {
   StandardFonts,
   rgb,
 } from "pdf-lib";
+import sharp from "sharp";
 import {
   CONSENT_ACK_LINE,
   CONSENT_INTRO,
   CONSENT_ITEMS,
   CONSENT_TITLE,
-  STERILE_NOTE,
   STUDIO_INFO,
 } from "./consent-content";
+import { CONSENT_LOGO_JPEG_BASE64 } from "./consent-logo";
 
 // US Letter, in PDF points (72pt = 1in).
 const PAGE_W = 612;
 const PAGE_H = 792;
-const MARGIN = 54;
+const MARGIN = 56;
+const FOOTER_H = 30; // reserved band at the bottom of every page
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
-const INK = rgb(0.12, 0.12, 0.12);
-const MUTED = rgb(0.45, 0.45, 0.45);
-const HAIRLINE = rgb(0.8, 0.8, 0.8);
-const RULE = rgb(0.6, 0.6, 0.6);
+const INK = rgb(0.1, 0.1, 0.1);
+const MUTED = rgb(0.42, 0.42, 0.42);
+const HAIRLINE = rgb(0.78, 0.78, 0.78);
+const RULE = rgb(0.55, 0.55, 0.55);
 
 type Doc = {
   pdf: PDFDocument;
@@ -63,6 +65,30 @@ function formatDate(value?: string | null): string {
   return `${MONTHS[month - 1]} ${day}, ${year}`;
 }
 
+/**
+ * The PDF standard fonts only encode WinAnsi (Latin-1 plus common typographic
+ * marks). Client-typed text (names, tattoo descriptions) can contain anything —
+ * emoji included — and pdf-lib throws on unencodable characters, which would
+ * fail the whole booking. Map or drop everything outside the encodable set.
+ */
+const WINANSI_EXTRA = new Set(
+  "‘’‚“”„–—…•†‡" +
+    "ˆ˜‰‹›ŒœŠšŽžŸƒ€™"
+);
+function sanitizeText(input: string | null | undefined): string {
+  const out: string[] = [];
+  for (const ch of (input ?? "").replace(/\s+/g, " ")) {
+    const code = ch.codePointAt(0)!;
+    if (code >= 0x20 && code <= 0x7e) out.push(ch);
+    else if (code >= 0xa1 && code <= 0xff) out.push(ch);
+    else if (WINANSI_EXTRA.has(ch)) out.push(ch);
+    else if (ch === " ") out.push(" ");
+    else if (ch === "−") out.push("-");
+    // anything else (emoji, dingbats, non-Latin scripts) is dropped
+  }
+  return out.join("").replace(/ {2,}/g, " ").trim();
+}
+
 /** Split a single token that is wider than `maxWidth` into character-level chunks. */
 function breakLongWord(
   font: PDFFont,
@@ -93,7 +119,7 @@ function wrapText(
   text: string,
   maxWidth: number
 ): string[] {
-  const words = text
+  const words = sanitizeText(text)
     .split(/\s+/)
     .filter(Boolean)
     .flatMap((w) => breakLongWord(font, size, w, maxWidth));
@@ -117,9 +143,9 @@ function addPage(doc: Doc) {
   doc.cursor = MARGIN;
 }
 
-/** Move to a new page if `needed` points won't fit below the current cursor. */
+/** Move to a new page if `needed` points won't fit above the footer band. */
 function ensureSpace(doc: Doc, needed: number) {
-  if (doc.cursor + needed > PAGE_H - MARGIN) addPage(doc);
+  if (doc.cursor + needed > PAGE_H - MARGIN - FOOTER_H) addPage(doc);
 }
 
 /** Draw a single line of text at the current cursor and advance by `lineHeight`. */
@@ -136,15 +162,22 @@ function drawLine(
   } = {}
 ) {
   const font = opts.font ?? doc.font;
-  const size = opts.size ?? 10;
-  const lineHeight = opts.lineHeight ?? size * 1.35;
+  const size = opts.size ?? 10.5;
+  const lineHeight = opts.lineHeight ?? size * 1.4;
   const color = opts.color ?? INK;
+  const clean = sanitizeText(text);
   ensureSpace(doc, lineHeight);
   let x = opts.x ?? MARGIN;
   if (opts.align === "center") {
-    x = (PAGE_W - font.widthOfTextAtSize(text, size)) / 2;
+    x = (PAGE_W - font.widthOfTextAtSize(clean, size)) / 2;
   }
-  doc.page.drawText(text, { x, y: PAGE_H - doc.cursor - size, size, font, color });
+  doc.page.drawText(clean, {
+    x,
+    y: PAGE_H - doc.cursor - size,
+    size,
+    font,
+    color,
+  });
   doc.cursor += lineHeight;
 }
 
@@ -163,11 +196,39 @@ function drawParagraph(
   } = {}
 ) {
   const font = opts.font ?? doc.font;
-  const size = opts.size ?? 10;
+  const size = opts.size ?? 10.5;
   const maxWidth = opts.maxWidth ?? CONTENT_W;
   for (const line of wrapText(font, size, text, maxWidth)) {
     drawLine(doc, line, { ...opts, font, size });
   }
+}
+
+/** Centered ornament: a hairline broken by a small solid diamond, like the studio's card. */
+function drawOrnament(doc: Doc, width = 220, gap = 9) {
+  doc.cursor += gap;
+  ensureSpace(doc, 8);
+  const midY = PAGE_H - doc.cursor - 3;
+  const startX = (PAGE_W - width) / 2;
+  const d = 3.2; // diamond half-size
+  const cx = PAGE_W / 2;
+  doc.page.drawLine({
+    start: { x: startX, y: midY },
+    end: { x: cx - d - 6, y: midY },
+    thickness: 0.6,
+    color: RULE,
+  });
+  doc.page.drawLine({
+    start: { x: cx + d + 6, y: midY },
+    end: { x: startX + width, y: midY },
+    thickness: 0.6,
+    color: RULE,
+  });
+  doc.page.drawSvgPath(`M ${d} 0 L ${d * 2} ${d} L ${d} ${d * 2} L 0 ${d} Z`, {
+    x: cx - d,
+    y: midY + d,
+    color: INK,
+  });
+  doc.cursor += 8 + gap;
 }
 
 function drawDivider(doc: Doc, gap = 8) {
@@ -196,21 +257,110 @@ function dataUrlToBytes(dataUrl: string): Uint8Array | null {
   }
 }
 
+/**
+ * Embed a signature-pad PNG with its empty margins cropped away.
+ *
+ * The pads export the full canvas (display size x devicePixelRatio) with the ink
+ * somewhere inside a sea of transparency. Scaling that whole canvas into a small
+ * box is what used to make initials land as tiny marks in odd spots — trimming
+ * first means the ink itself is what gets fitted to the box.
+ */
+async function embedInkPng(
+  pdf: PDFDocument,
+  dataUrl: string | null
+): Promise<PDFImage | null> {
+  if (!dataUrl) return null;
+  const bytes = dataUrlToBytes(dataUrl);
+  if (!bytes) return null;
+
+  let png: Buffer = Buffer.from(bytes);
+  try {
+    const trimmed = await sharp(png).trim({ threshold: 12 }).png().toBuffer();
+    const meta = await sharp(trimmed).metadata();
+    if ((meta.width ?? 0) > 2 && (meta.height ?? 0) > 2) png = trimmed;
+  } catch {
+    // e.g. a fully blank canvas — fall back to the untrimmed image
+  }
+
+  try {
+    return await pdf.embedPng(png);
+  } catch {
+    return null;
+  }
+}
+
 /** Draw an image scaled to fit a box, anchored to the box's bottom-left, preserving aspect. */
 function drawImageInBox(
   page: PDFPage,
   image: PDFImage,
-  box: { x: number; y: number; w: number; h: number }
+  box: { x: number; y: number; w: number; h: number },
+  anchor: "left" | "center" = "center"
 ) {
   const scale = Math.min(box.w / image.width, box.h / image.height);
   const w = image.width * scale;
   const h = image.height * scale;
   page.drawImage(image, {
-    x: box.x + (box.w - w) / 2,
+    x: anchor === "center" ? box.x + (box.w - w) / 2 : box.x,
     y: box.y,
     width: w,
     height: h,
   });
+}
+
+/**
+ * A labeled fill-in field: the value (if any) sits on a rule, with a small
+ * caption underneath. `topY` is the cursor-space distance to the field's top;
+ * returns the field's total height.
+ */
+function drawField(
+  doc: Doc,
+  opts: {
+    x: number;
+    w: number;
+    topY: number;
+    label: string;
+    value?: string;
+    valueSize?: number;
+    inkH?: number; // vertical room above the rule (for signatures)
+    image?: PDFImage | null;
+  }
+): number {
+  const inkH = opts.inkH ?? 16;
+  const valueSize = opts.valueSize ?? 11;
+  const ruleY = PAGE_H - (opts.topY + inkH);
+
+  if (opts.image) {
+    drawImageInBox(
+      doc.page,
+      opts.image,
+      { x: opts.x + 4, y: ruleY + 2, w: opts.w - 8, h: inkH - 2 },
+      "left"
+    );
+  } else if (opts.value) {
+    doc.page.drawText(sanitizeText(opts.value), {
+      x: opts.x + 2,
+      y: ruleY + 4,
+      size: valueSize,
+      font: doc.font,
+      color: INK,
+    });
+  }
+
+  doc.page.drawLine({
+    start: { x: opts.x, y: ruleY },
+    end: { x: opts.x + opts.w, y: ruleY },
+    thickness: 0.75,
+    color: RULE,
+  });
+  doc.page.drawText(opts.label, {
+    x: opts.x,
+    y: ruleY - 11,
+    size: 7.5,
+    font: doc.font,
+    color: MUTED,
+  });
+
+  return inkH + 14;
 }
 
 export async function generateConsentForm(data: {
@@ -222,12 +372,12 @@ export async function generateConsentForm(data: {
   signaturePngDataUrl: string | null;
 }): Promise<Buffer> {
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`${CONSENT_TITLE} — ${data.fullName}`);
+  pdf.setTitle(`${CONSENT_TITLE} — ${data.fullName || STUDIO_INFO.name}`);
   pdf.setProducer("Starlet Tattoos booking");
 
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const font = await pdf.embedFont(StandardFonts.TimesRoman);
+  const bold = await pdf.embedFont(StandardFonts.TimesRomanBold);
+  const italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
 
   const doc: Doc = {
     pdf,
@@ -235,39 +385,45 @@ export async function generateConsentForm(data: {
     font,
     bold,
     italic,
-    cursor: MARGIN,
+    cursor: 44,
   };
 
-  // Embed the client's initials / signature once; the initials are reused per clause.
-  let initialsImage: PDFImage | null = null;
-  if (data.initialsPngDataUrl) {
-    const bytes = dataUrlToBytes(data.initialsPngDataUrl);
-    if (bytes) {
-      try {
-        initialsImage = await pdf.embedPng(bytes);
-      } catch {
-        initialsImage = null;
-      }
-    }
+  const initialsImage = await embedInkPng(pdf, data.initialsPngDataUrl);
+  const signatureImage = await embedInkPng(pdf, data.signaturePngDataUrl);
+
+  // ---- Header: script logo (typeset fallback), title, ornament ---------------
+  let logoDrawn = false;
+  try {
+    const logo = await pdf.embedJpg(
+      Buffer.from(CONSENT_LOGO_JPEG_BASE64, "base64")
+    );
+    const w = 128;
+    const h = (logo.height / logo.width) * w;
+    doc.page.drawImage(logo, {
+      x: (PAGE_W - w) / 2,
+      y: PAGE_H - doc.cursor - h,
+      width: w,
+      height: h,
+    });
+    doc.cursor += h + 14;
+    logoDrawn = true;
+  } catch {
+    // fall through to the typeset name
+  }
+  if (!logoDrawn) {
+    drawLine(doc, STUDIO_INFO.name, {
+      font: bold,
+      size: 22,
+      lineHeight: 26,
+      align: "center",
+    });
+    doc.cursor += 4;
   }
 
-  let signatureImage: PDFImage | null = null;
-  if (data.signaturePngDataUrl) {
-    const bytes = dataUrlToBytes(data.signaturePngDataUrl);
-    if (bytes) {
-      try {
-        signatureImage = await pdf.embedPng(bytes);
-      } catch {
-        signatureImage = null;
-      }
-    }
-  }
-
-  // ---- Header ---------------------------------------------------------------
-  drawLine(doc, STUDIO_INFO.name, {
+  drawLine(doc, CONSENT_TITLE, {
     font: bold,
-    size: 20,
-    lineHeight: 24,
+    size: 15,
+    lineHeight: 19,
     align: "center",
   });
 
@@ -282,78 +438,92 @@ export async function generateConsentForm(data: {
       align: "center",
     });
   }
+  drawOrnament(doc);
 
-  doc.cursor += 6;
-  drawLine(doc, CONSENT_TITLE, {
-    font: bold,
-    size: 14,
-    lineHeight: 18,
-    align: "center",
-  });
-  drawDivider(doc, 8);
-
-  // ---- Client + procedure ---------------------------------------------------
-  const labelValue = (label: string, value: string) => {
-    ensureSpace(doc, 16);
-    const y = PAGE_H - doc.cursor - 10;
-    doc.page.drawText(label, { x: MARGIN, y, size: 10, font: bold, color: MUTED });
-    const labelW = bold.widthOfTextAtSize(label, 10);
-    doc.page.drawText(value || "—", {
-      x: MARGIN + labelW + 6,
-      y,
-      size: 10,
-      font,
-      color: INK,
+  // ---- Client + procedure ----------------------------------------------------
+  {
+    const top = doc.cursor;
+    const h1 = drawField(doc, {
+      x: MARGIN,
+      w: 300,
+      topY: top,
+      label: "CLIENT NAME",
+      value: data.fullName,
     });
-    doc.cursor += 16;
-  };
+    const h2 = drawField(doc, {
+      x: MARGIN + 330,
+      w: CONTENT_W - 330,
+      topY: top,
+      label: "DATE OF BIRTH",
+      value: formatDate(data.dob),
+    });
+    doc.cursor = top + Math.max(h1, h2) + 8;
+  }
 
-  labelValue("Client name:", data.fullName);
-  labelValue("Date of birth:", formatDate(data.dob));
-
-  doc.cursor += 4;
-  drawLine(doc, "Tattoo / procedure description", {
-    font: bold,
-    size: 10,
-    lineHeight: 14,
+  drawLine(doc, "DESCRIPTION OF PROCEDURE", {
+    size: 7.5,
+    lineHeight: 12,
     color: MUTED,
   });
-  drawParagraph(doc, data.tattooDescription?.trim() || "—", {
-    size: 10,
-    lineHeight: 14,
-  });
+  if (data.tattooDescription?.trim()) {
+    drawParagraph(doc, data.tattooDescription, {
+      size: 10.5,
+      lineHeight: 14.5,
+    });
+  } else {
+    // Blank form: fill-in rules for handwriting.
+    for (let i = 0; i < 2; i++) {
+      ensureSpace(doc, 18);
+      doc.cursor += 14;
+      doc.page.drawLine({
+        start: { x: MARGIN, y: PAGE_H - doc.cursor },
+        end: { x: PAGE_W - MARGIN, y: PAGE_H - doc.cursor },
+        thickness: 0.75,
+        color: RULE,
+      });
+      doc.cursor += 4;
+    }
+  }
 
-  drawDivider(doc, 8);
+  drawDivider(doc, 9);
 
-  // ---- Intro ----------------------------------------------------------------
-  drawParagraph(doc, CONSENT_INTRO, { size: 10, lineHeight: 14.5 });
-  doc.cursor += 6;
-  drawLine(doc, "Please initial each statement below.", {
+  // ---- Intro -----------------------------------------------------------------
+  drawParagraph(doc, CONSENT_INTRO, { size: 10.5, lineHeight: 15 });
+  doc.cursor += 8;
+  drawLine(doc, "Please initial each of the following statements:", {
     font: bold,
-    size: 10.5,
+    size: 11,
     lineHeight: 16,
   });
   doc.cursor += 4;
 
-  // ---- Initialled statements -----------------------------------------------
-  const CLAUSE_SIZE = 10;
-  const CLAUSE_LH = 13.5;
-  const BOX_W = 44;
-  const BOX_H = 16;
-  const GAP = 14;
-  const textX = MARGIN + BOX_W + GAP;
-  const textMaxW = CONTENT_W - BOX_W - GAP;
+  // ---- Initialled statements -------------------------------------------------
+  const CLAUSE_SIZE = 10.5;
+  const CLAUSE_LH = 14;
+  const INIT_W = 48; // initials rule width
+  const INIT_H = 16; // ink room above the rule
+  const GAP = 16;
+  const numX = MARGIN + INIT_W + GAP;
+  const NUM_W = 20; // hanging-indent column for "1."
+  const textX = numX + NUM_W;
+  const textMaxW = PAGE_W - MARGIN - textX;
 
   CONSENT_ITEMS.forEach((item, i) => {
-    const numbered = `${i + 1}.  ${item.text}`;
-    const lines = wrapText(font, CLAUSE_SIZE, numbered, textMaxW);
+    const lines = wrapText(font, CLAUSE_SIZE, item.text, textMaxW);
     const textH = lines.length * CLAUSE_LH;
-    const rowH = Math.max(textH, BOX_H) + 10;
+    const rowH = Math.max(textH, INIT_H + 2) + 9;
 
-    // Keep each statement (text + initials box) together on one page.
+    // Keep each statement (text + initials rule) together on one page.
     ensureSpace(doc, rowH);
     const rowTop = doc.cursor;
 
+    doc.page.drawText(`${i + 1}.`, {
+      x: numX,
+      y: PAGE_H - rowTop - CLAUSE_SIZE,
+      size: CLAUSE_SIZE,
+      font: bold,
+      color: INK,
+    });
     lines.forEach((line, li) => {
       doc.page.drawText(line, {
         x: textX,
@@ -364,140 +534,166 @@ export async function generateConsentForm(data: {
       });
     });
 
-    // Initials box: a baseline aligned with the first text line, image centered on it.
-    const baselineY = PAGE_H - rowTop - BOX_H;
+    // Initials rule, its top edge aligned with the statement's first line.
+    const ruleY = PAGE_H - rowTop - INIT_H;
     doc.page.drawLine({
-      start: { x: MARGIN, y: baselineY },
-      end: { x: MARGIN + BOX_W, y: baselineY },
+      start: { x: MARGIN, y: ruleY },
+      end: { x: MARGIN + INIT_W, y: ruleY },
       thickness: 0.75,
-      color: HAIRLINE,
+      color: RULE,
     });
     if (initialsImage) {
       drawImageInBox(doc.page, initialsImage, {
-        x: MARGIN,
-        y: baselineY + 1.5,
-        w: BOX_W,
-        h: BOX_H - 1.5,
+        x: MARGIN + 3,
+        y: ruleY + 1.5,
+        w: INIT_W - 6,
+        h: INIT_H - 2,
       });
     }
 
     doc.cursor = rowTop + rowH;
   });
 
-  doc.cursor += 2;
-  drawParagraph(doc, STERILE_NOTE, {
+  // ---- Acknowledgment + signature block (kept together) ----------------------
+  const ackLines = wrapText(italic, 10.5, CONSENT_ACK_LINE, CONTENT_W);
+  const SIG_INK_H = 40;
+  const sigBlockH =
+    18 + ackLines.length * 15 + 12 + (SIG_INK_H + 14) + 18 + 30;
+  ensureSpace(doc, sigBlockH);
+
+  drawDivider(doc, 9);
+  drawParagraph(doc, CONSENT_ACK_LINE, {
     font: italic,
-    size: 9.5,
-    lineHeight: 13,
-    color: MUTED,
+    size: 10.5,
+    lineHeight: 15,
   });
+  doc.cursor += 12;
 
-  // ---- Signature block (kept together) --------------------------------------
-  doc.cursor += 10;
-  ensureSpace(doc, 150);
-  drawDivider(doc, 6);
-
-  drawParagraph(doc, CONSENT_ACK_LINE, { size: 10, lineHeight: 14 });
-  doc.cursor += 14;
-
-  const SIG_W = 240;
-  const SIG_H = 46;
-  const sigTop = doc.cursor;
-  const sigLineY = PAGE_H - sigTop - SIG_H;
-
-  // Signature line (left).
-  doc.page.drawLine({
-    start: { x: MARGIN, y: sigLineY },
-    end: { x: MARGIN + SIG_W, y: sigLineY },
-    thickness: 0.75,
-    color: RULE,
-  });
-  if (signatureImage) {
-    drawImageInBox(doc.page, signatureImage, {
+  {
+    const top = doc.cursor;
+    const h1 = drawField(doc, {
       x: MARGIN,
-      y: sigLineY + 2,
-      w: SIG_W,
-      h: SIG_H - 2,
+      w: 300,
+      topY: top,
+      label: "CLIENT SIGNATURE",
+      image: signatureImage,
+      inkH: SIG_INK_H,
     });
+    const h2 = drawField(doc, {
+      x: MARGIN + 330,
+      w: CONTENT_W - 330,
+      topY: top,
+      label: "DATE",
+      value: formatDate(data.consentDate),
+      inkH: SIG_INK_H,
+    });
+    doc.cursor = top + Math.max(h1, h2) + 18;
   }
-  doc.page.drawText("Signature", {
-    x: MARGIN,
-    y: sigLineY - 12,
-    size: 8.5,
-    font,
-    color: MUTED,
-  });
+  {
+    const top = doc.cursor;
+    const h1 = drawField(doc, {
+      x: MARGIN,
+      w: 300,
+      topY: top,
+      label: "PRINTED NAME",
+      value: data.fullName,
+    });
+    const h2 = drawField(doc, {
+      x: MARGIN + 330,
+      w: CONTENT_W - 330,
+      topY: top,
+      label: "ARTIST SIGNATURE",
+    });
+    doc.cursor = top + Math.max(h1, h2) + 10;
+  }
 
-  // Date line (right).
-  const dateX = MARGIN + SIG_W + 40;
-  const dateW = PAGE_W - MARGIN - dateX;
-  doc.page.drawText(formatDate(data.consentDate), {
-    x: dateX,
-    y: sigLineY + 4,
-    size: 11,
-    font,
-    color: INK,
-  });
-  doc.page.drawLine({
-    start: { x: dateX, y: sigLineY },
-    end: { x: dateX + dateW, y: sigLineY },
-    thickness: 0.75,
-    color: RULE,
-  });
-  doc.page.drawText("Date", {
-    x: dateX,
-    y: sigLineY - 12,
-    size: 8.5,
-    font,
-    color: MUTED,
-  });
+  // ---- Studio / practitioner (official) --------------------------------------
+  // California Safe Body Art Act details. Configured values print; blanks become
+  // fill-in lines. Address/phone appear in the letterhead when configured, so
+  // they only need a line here when left blank.
+  const officialFields: Array<[string, string]> = [];
+  if (!STUDIO_INFO.address.trim()) officialFields.push(["STUDIO ADDRESS", ""]);
+  if (!STUDIO_INFO.phone.trim()) officialFields.push(["STUDIO PHONE", ""]);
+  officialFields.push(["COUNTY", STUDIO_INFO.county]);
+  officialFields.push(["FACILITY PERMIT #", STUDIO_INFO.facilityPermitNo]);
+  officialFields.push([
+    "PRACTITIONER REGISTRATION #",
+    STUDIO_INFO.practitionerRegNo,
+  ]);
+  officialFields.push(["ARTIST / PRACTITIONER", STUDIO_INFO.artistName]);
 
-  doc.cursor = sigTop + SIG_H + 22;
+  const officialRowCount = Math.ceil(officialFields.length / 2);
+  ensureSpace(doc, 34 + officialRowCount * 32);
+  drawDivider(doc, 8);
+  drawLine(doc, "STUDIO USE", { size: 7.5, lineHeight: 13, color: MUTED });
+  doc.cursor += 2;
 
-  // Printed name for the record.
-  labelValue("Printed name:", data.fullName);
-
-  // ---- Studio / practitioner (official) -------------------------------------
-  // Every field prints its configured value, or a labeled blank line to fill in by
-  // hand. Address/phone appear in the header letterhead when configured, so they only
-  // get a fill-in line here when they are left blank.
-  const officialRows: Array<[string, string]> = [];
-  if (!STUDIO_INFO.address.trim()) officialRows.push(["Studio address:", ""]);
-  if (!STUDIO_INFO.phone.trim()) officialRows.push(["Studio phone:", ""]);
-  officialRows.push(["County:", STUDIO_INFO.county]);
-  officialRows.push(["Facility permit #:", STUDIO_INFO.facilityPermitNo]);
-  officialRows.push(["Practitioner registration #:", STUDIO_INFO.practitionerRegNo]);
-  officialRows.push(["Artist / practitioner:", STUDIO_INFO.artistName]);
-
-  doc.cursor += 6;
-  drawDivider(doc, 6);
-  drawLine(doc, "Studio details", { font: bold, size: 9, lineHeight: 14, color: MUTED });
-
-  officialRows.forEach(([label, value]) => {
-    ensureSpace(doc, 18);
-    const y = PAGE_H - doc.cursor - 10;
-    doc.page.drawText(label, { x: MARGIN, y, size: 9.5, font, color: MUTED });
-    const labelW = font.widthOfTextAtSize(label, 9.5);
-    const lineStartX = MARGIN + labelW + 6;
-    const lineEndX = PAGE_W - MARGIN;
-    if (value.trim()) {
-      doc.page.drawText(value.trim(), {
-        x: lineStartX,
-        y,
-        size: 9.5,
-        font,
-        color: INK,
+  const COL_W = (CONTENT_W - 30) / 2;
+  for (let r = 0; r < officialRowCount; r++) {
+    const top = doc.cursor;
+    const left = officialFields[r * 2];
+    const right = officialFields[r * 2 + 1];
+    let h = drawField(doc, {
+      x: MARGIN,
+      w: COL_W,
+      topY: top,
+      label: left[0],
+      value: left[1].trim(),
+      valueSize: 10,
+      inkH: 14,
+    });
+    if (right) {
+      const h2 = drawField(doc, {
+        x: MARGIN + COL_W + 30,
+        w: COL_W,
+        topY: top,
+        label: right[0],
+        value: right[1].trim(),
+        valueSize: 10,
+        inkH: 14,
       });
-    } else {
-      // Blank line to fill in by hand.
-      doc.page.drawLine({
-        start: { x: lineStartX, y: y - 2 },
-        end: { x: lineEndX, y: y - 2 },
-        thickness: 0.5,
-        color: HAIRLINE,
+      h = Math.max(h, h2);
+    }
+    doc.cursor = top + h + 6;
+  }
+
+  // ---- Footer on every page --------------------------------------------------
+  const pages = pdf.getPages();
+  const clientBit = data.fullName.trim()
+    ? `Client: ${sanitizeText(data.fullName)}`
+    : "";
+  pages.forEach((page, i) => {
+    const y = 30;
+    page.drawLine({
+      start: { x: MARGIN, y: y + 12 },
+      end: { x: PAGE_W - MARGIN, y: y + 12 },
+      thickness: 0.5,
+      color: HAIRLINE,
+    });
+    page.drawText(`${STUDIO_INFO.name} • ${CONSENT_TITLE}`, {
+      x: MARGIN,
+      y,
+      size: 7.5,
+      font,
+      color: MUTED,
+    });
+    const pageLabel = `Page ${i + 1} of ${pages.length}`;
+    page.drawText(pageLabel, {
+      x: PAGE_W - MARGIN - font.widthOfTextAtSize(pageLabel, 7.5),
+      y,
+      size: 7.5,
+      font,
+      color: MUTED,
+    });
+    if (clientBit && pages.length > 1) {
+      page.drawText(clientBit, {
+        x: (PAGE_W - font.widthOfTextAtSize(clientBit, 7.5)) / 2,
+        y,
+        size: 7.5,
+        font,
+        color: MUTED,
       });
     }
-    doc.cursor += 18;
   });
 
   const bytes = await pdf.save();

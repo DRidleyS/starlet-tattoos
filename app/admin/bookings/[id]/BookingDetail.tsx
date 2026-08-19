@@ -17,6 +17,13 @@ type Booking = {
   consent_date: string;
   status: string;
   notes: string | null;
+  followup_email_id?: string | null;
+  followup_scheduled_for?: string | null;
+};
+
+type Followup = {
+  emailId: string | null;
+  scheduledFor: string | null;
 };
 
 export default function BookingDetail({
@@ -26,6 +33,8 @@ export default function BookingDetail({
   initialsUrl,
   signatureUrl,
   referencePhotoUrls,
+  healedPhotoUrls,
+  now,
 }: {
   booking: Booking;
   photoIdUrl: string | null;
@@ -33,6 +42,9 @@ export default function BookingDetail({
   initialsUrl: string | null;
   signatureUrl: string | null;
   referencePhotoUrls: string[];
+  healedPhotoUrls: string[];
+  /** Server render time (ms) — used instead of Date.now() to keep render pure. */
+  now: number;
 }) {
   const [status, setStatus] = useState(booking.status);
   const [notes, setNotes] = useState(booking.notes || "");
@@ -40,7 +52,28 @@ export default function BookingDetail({
   const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [followup, setFollowup] = useState<Followup>({
+    emailId: booking.followup_email_id ?? null,
+    scheduledFor: booking.followup_scheduled_for ?? null,
+  });
+  const [followupError, setFollowupError] = useState<string | null>(null);
+  const [followupBusy, setFollowupBusy] = useState(false);
   const router = useRouter();
+
+  const followupPending = Boolean(
+    followup.emailId &&
+      followup.scheduledFor &&
+      new Date(followup.scheduledFor).getTime() > now
+  );
+  const followupSent = Boolean(followup.emailId && !followupPending);
+
+  const applyFollowupResponse = (data: {
+    followup?: Followup;
+    followupError?: string | null;
+  }) => {
+    if (data.followup) setFollowup(data.followup);
+    setFollowupError(data.followupError ?? null);
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -57,14 +90,41 @@ export default function BookingDetail({
   const save = async () => {
     setSaving(true);
     setSaved(false);
-    await fetch(`/api/bookings/${booking.id}`, {
+    const res = await fetch(`/api/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, notes }),
     });
+    if (res.ok) {
+      try {
+        applyFollowupResponse(await res.json());
+      } catch {
+        // ignore malformed response body
+      }
+    }
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const followupAction = async (action: "schedule" | "cancel") => {
+    setFollowupBusy(true);
+    setFollowupError(null);
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ followupAction: action }),
+      });
+      if (res.ok) {
+        applyFollowupResponse(await res.json());
+      } else {
+        setFollowupError("Request failed — please try again.");
+      }
+    } catch {
+      setFollowupError("Request failed — please try again.");
+    }
+    setFollowupBusy(false);
   };
 
   return (
@@ -117,6 +177,20 @@ export default function BookingDetail({
         </div>
       </section>
 
+      {/* Healed photos sent by the client via their private follow-up link */}
+      {healedPhotoUrls.length > 0 && (
+        <section className="mb-8 space-y-4">
+          <h2 className="text-sm font-semibold text-neutral-500 uppercase mb-2">
+            Healed Photos
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {healedPhotoUrls.map((url, i) => (
+              <ImageCard key={i} label={`Healed ${i + 1}`} src={url} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Status & Notes */}
       <section className="bg-neutral-900 rounded-xl p-6 space-y-4">
         <div>
@@ -132,6 +206,62 @@ export default function BookingDetail({
               </option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm text-neutral-400 mb-1">
+            Healing follow-up
+          </label>
+          <div className="bg-neutral-800 rounded-lg px-4 py-3 space-y-2">
+            {followupPending ? (
+              <>
+                <p className="text-sm text-neutral-200">
+                  Scheduled for{" "}
+                  <span className="font-semibold">
+                    {formatFollowupDate(followup.scheduledFor!)}
+                  </span>{" "}
+                  — asks {booking.full_name.split(" ")[0]} to reply with healed
+                  photos and leave a review.
+                </p>
+                <button
+                  onClick={() => followupAction("cancel")}
+                  disabled={followupBusy}
+                  className="text-sm text-neutral-400 hover:text-red-400 transition disabled:opacity-50"
+                >
+                  {followupBusy ? "Cancelling..." : "Cancel follow-up"}
+                </button>
+              </>
+            ) : followupSent ? (
+              <p className="text-sm text-neutral-200">
+                Sent {formatFollowupDate(followup.scheduledFor!)} — asked for
+                healed photos and a review.
+              </p>
+            ) : status === "completed" ? (
+              <>
+                <p className="text-sm text-neutral-400">
+                  No follow-up scheduled for this booking.
+                </p>
+                <button
+                  onClick={() => followupAction("schedule")}
+                  disabled={followupBusy}
+                  className="text-sm text-rose-300 hover:text-rose-200 transition disabled:opacity-50"
+                >
+                  {followupBusy
+                    ? "Scheduling..."
+                    : "Schedule follow-up (sends in 2 weeks)"}
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-neutral-500">
+                When you mark this booking <b>completed</b>, the client is
+                automatically emailed 2 weeks later asking for healed photos
+                and a review.
+              </p>
+            )}
+            {followupError && (
+              <p className="text-sm text-red-400">{followupError}</p>
+            )}
+          </div>
         </div>
 
         <div>
@@ -183,6 +313,15 @@ export default function BookingDetail({
       </section>
     </div>
   );
+}
+
+function formatFollowupDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function Field({ label, value }: { label: string; value: string }) {

@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { siteUrl } from "./site-url";
 
 function getResend() {
   const key = process.env.RESEND_API_KEY;
@@ -74,5 +75,38 @@ export async function sendBookingEmail(
       <p style="color:#888;font-size:12px">Consent form, photo ID, and reference photos are attached.</p>
     `,
     attachments: emailAttachments,
+  });
+}
+
+/**
+ * Studio notification when a client submits healed photos through their private
+ * upload link (from the two-week follow-up email). Photos are attached and are
+ * also visible on the booking's admin page.
+ */
+export async function sendHealedPhotosEmail(
+  booking: { id: string; fullName: string; email: string },
+  photos: Buffer[],
+  message: string
+) {
+  const adminUrl = `${siteUrl()}/admin/bookings/${booking.id}`;
+  const messageHtml = message.trim()
+    ? `<h3>Their note</h3><p style="white-space:pre-wrap">${escapeHtml(message.trim())}</p>`
+    : "";
+
+  await getResend().emails.send({
+    from: `Starlet Tattoos <${FROM}>`,
+    to: [TO],
+    replyTo: booking.email,
+    subject: `Healed photos from ${escapeHtml(booking.fullName)}`,
+    html: `
+      <h2>Healed photos from ${escapeHtml(booking.fullName)}</h2>
+      <p>${photos.length} photo${photos.length === 1 ? "" : "s"} attached — also saved to
+        <a href="${escapeHtml(adminUrl)}">their booking</a> in the admin portal.</p>
+      ${messageHtml}
+    `,
+    attachments: photos.map((buf, i) => ({
+      filename: `healed_${i + 1}.jpg`,
+      content: buf,
+    })),
   });
 }
