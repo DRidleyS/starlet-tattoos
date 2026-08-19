@@ -111,6 +111,13 @@
   source project never hit it because PS-authored files carry BOMs. Convention adopted: PHASELOG
   stays ASCII-only. A deeper fix (add -Encoding UTF8 to every hook read) is a possible upstream
   improvement.
+- (s) PROJECT (debt knowingly taken in C1, 2026-08-19): the rate limiter in lib/rate-limit.ts keeps
+  state in ONE serverless instance's memory, so it is NOT a distributed limit - Vercel reuses warm
+  instances (so real bursts do get throttled) but an attacker spreading requests across cold starts
+  can dilute it. Accepted deliberately: no external service, no signup, no new env vars, which suits
+  a studio taking a handful of bookings a month. UPGRADE PATH IS DESIGNED IN: every call site goes
+  through hit()/peek(), so moving to Vercel KV / Upstash / a Postgres table means reimplementing
+  those two functions and nothing else. Revisit if the site ever attracts real abuse.
 - (r) PROJECT (open decision from wave C, 2026-08-19): the CSP is REPORT-ONLY - measuring, not
   enforcing. Flipping the header key in next.config.ts from "Content-Security-Policy-Report-Only" to
   "Content-Security-Policy" is a ONE-LINE change that makes it binding. Do NOT flip it yet: dev is
@@ -183,7 +190,38 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~06:30: **B6 CLOSED** - WAVE B CONVERGED. All browser-verifiable pre-greenlit work
+*Stamp 2026-08-19 ~12:20: **C1 CLOSED**, **C2 CLOSED**, **C3 CLOSED** - wave C (security hardening)
+is DONE, committed locally as e5e4043, and deliberately NOT PUSHED (repo is 13 commits ahead of
+origin/main; pushing auto-deploys prod, and the user wants to eyeball layout first). This stamp was
+written because the harness's own boundary notes-gate REFUSED to compact without it - that gate is
+now proven live alongside the Stop hook and injector. What a fresh context cannot re-derive:*
+
+- ***A DEV SERVER IS STILL RUNNING*** *on port 3000 (Browser-pane preview, serverId
+  aaaafa57-3f37-455a-ae9f-f855a745f676, started via scripts/harness/dev.cmd). It was left up ON
+  PURPOSE so the user can inspect layout themselves. CONSEQUENCE: `scripts/harness/build.ps1` will
+  REFUSE while it holds the port - stop the preview first, or use check.ps1 (tsc+eslint, no conflict).*
+- *THE CSP IS REPORT-ONLY AND MUST STAY THAT WAY FOR NOW (ledger r). Flipping the key in
+  next.config.ts from "Content-Security-Policy-Report-Only" to "Content-Security-Policy" is a
+  one-line change that makes it BINDING and could white-screen the live site. Local dev has no
+  Supabase data, so img/media/connect to *.supabase.co was NEVER exercised against the policy.
+  Correct sequence: ship report-only to prod -> observe real violations -> only then enforce.*
+- *Wave C evidence (all in wave-c.md, headings C1/C2/C3): the rate limiter was watched FIRING - 7
+  rapid POSTs to /api/bookings gave 400,400,400,400,400 then 429 with Retry-After 3600 on #6 and #7.
+  Dev layout verified intact: desktop no overflow + 158 CSS rules/5 sheets/4 styled-jsx blocks +
+  fonts resolved; mobile 375 overflowPx 0, zero offenders; lightbox, canvas->toDataURL, and the
+  booking funnel all fine; ZERO CSP violations anywhere.*
+- *AWAITING THE USER (do not start these): B1 + B4 are [pending] but blocked on their
+  verification-approach choice - (a) build+review then they confirm on a Vercel preview, (b) they
+  supply a local .env so a real booking can be submitted end-to-end, or (c) hold. Both rows were
+  REWRITTEN INTO PLAIN ENGLISH at the user's request - keep them that way. My standing recommendation,
+  already given: B4 is the highest-value item left and deserves option (b), because it changes the
+  LIVE intake path and should be proven with a real submission rather than code review.*
+- *Harness status: hooks are fully live after the session restart (SessionStart, Stop, injector paste,
+  and now the notes gate all observed firing). RULE ZERO floor cron is NOT armed right now - re-arm
+  ("11,41 * * * *") only if resuming autonomous operation; a board awaiting a user greenlight gets no
+  timer. Note the Stop hook goes SILENT whenever any [proposed] row exists (proposed-check precedes
+  pending-check) - there are none now, so it will nudge toward B1 at turn end.*
+- *(prior stamp, still accurate:) B6 CLOSED - WAVE B CONVERGED. All browser-verifiable pre-greenlit work
 is done (B2 galleries, B3 email reliability, B5 lint-green, B6 SEO/perf). The loop has reached the
 point where EVERYTHING remaining needs the user, so the RULE ZERO floor cron was DELETED (per "a wave
 awaiting a human greenlight gets no timer") and the loop STOPS here. Commits this session: 5dfd74c
