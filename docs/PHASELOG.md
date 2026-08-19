@@ -12,13 +12,24 @@
 <!-- PHASE-BOARD-START -->
 - [complete]    A1 :: Harness ported from D:\claude-phase-harness + adapted (400k measured window, empty busy list, UAT neutered) + every gate verified in the failing direction (master switch, token gate both halves, freshness gate, busy reaps, injector REFUSED choke point, build wrapper dev-server fence). Two source-kit bugs found+fixed (census regex, nudge_line path), encoding + orphan-detector findings logged. Closed at 81% context under the harness's own critical-mass rule. Narrative: wave-a.md.
 - [complete]    A1b :: A1 verification tail done: check.ps1 ran (RESULT: FAIL - surfaced a real baseline, 14 eslint no-explicit-any errors + 20 warnings; the wrapper worked), build.ps1 ran (RESULT: OK, buildId minted). RULE ZERO floor clock armed (cron 90937956). Harness memory note written. Install committed locally (9cdf897). DEFERRED to the user: the live injector-paste demo (classifier-gated from Claude's tools; it is the user's to watch). Narrative: wave-a.md.
-- [pending]     A2 :: Recon: research the whole project and write the implementation phases. Fan out subagents (keep the orchestrator window lean) over app/, components/, lib/, api routes, config; each returns concrete defects/improvements with file:line evidence. Merge into wave-a.md findings section, then append implementation phases to this board as pending rows (pre-greenlit by the wave directive) - risky/prod-touching items become [proposed] instead. Done when: board carries scoped implementation rows each sized to close under ~40% context.
+- [complete]    A2 :: Recon done: 4 read-only Explore agents (public/admin/lib+config/API) returned 43 file:line findings, merged into wave-a.md, synthesized into wave B (pending) + wave C (proposed). 2 correctness HIGHs + 1 security HIGH + validation/silent-failure/lint/a11y clusters. Narrative: wave-a.md A2 headings.
+- [pending]     B1 :: Admin portal resilience. Files: app/admin/bookings/[id]/BookingDetail.tsx (save():106, handleDelete():80, followupSent:236, labels :197/:268), app/admin/gallery/page.tsx (fetchAll:41, upload:58, delete:127/133, reorder:152/169), app/admin/login/page.tsx (callbackUrl:27, labels:50, role=alert:45). Gate every fetch on res.ok + try/catch/finally, surface errors, stop showing false success. DoD: each admin mutation shows correct success/failure in dev; check.ps1 + build green.
+- [pending]     B2 :: Public gallery correctness + a11y. components/HoneycombGallery.tsx: fix the single-imgRef bug (:213 - give the lightbox <img> its own ref), add role/tabIndex/keydown to hex tiles (:196), descriptive alt (:215), lazy/dimensions on raw <img> (:212); FlashGallery.tsx same alt/img treatment. DoD: lightbox zoom works, gallery keyboard-navigable, verified in browser.
+- [pending]     B3 :: Booking submission reliability. lib/send-booking-email.ts:59/:96 destructure Resend {error} and throw; app/api/bookings/route.ts:136 wrap the studio email best-effort (kill the duplicate-booking-on-500 path); components/BookingFunnel.tsx keydown stale dep (:853) + signature_pad typing (:459). TOUCHES LIVE INTAKE. DoD: a full booking submission completes in dev incl. email + PDF path; no duplicate on simulated email failure.
+- [pending]     B4 :: API input validation + error hygiene. app/api/bookings/route.ts:44 cap size/MIME/count + sharp re-encode uploads; app/api/gallery/route.ts try/catch + size cap + category whitelist + generic errors; status enum + notes cap (bookings/[id]); reorder id-validation + partial-failure checks; storage-remove result checks; videos url validation. RLS is off so this is the only guard. DoD: malformed uploads/inputs 400 cleanly, legit booking still succeeds in dev.
+- [pending]     B5 :: Lint-clean + type safety. Eliminate all 14 no-explicit-any (BookingFunnel.tsx CSS-var casts -> React.CSSProperties + signature_pad types; HoneycombGallery.tsx EventListener casts), catch(err:unknown), hand-written Supabase Database generic in lib/supabase-server.ts, drop dead preview exports (lib/send-client-emails.ts) or wire them, clear VideoCarousel stale eslint-disable + VineTopFrame useMemo deps. DoD: scripts/harness/check.ps1 RESULT: OK (eslint=0).
+- [pending]     B6 :: SEO metadata + media perf. app/layout.tsx openGraph/twitter/metadataBase; app/booking/page.tsx metadata (+ noindex decision); components/VideoCarousel.tsx preload=metadata; VineTopFrame.tsx/VineMainDivider.tsx resize-restart debounce; FlashGallery.tsx mobile padding overflow. DoD: link-preview meta present, no homepage horizontal scroll at 375px, verified in browser.
+- [proposed]    C1 :: Abuse & brute-force protection (rate-limit public bookings + healed-photos POST; admin-login lockout). Serverless has no shared memory - needs an infra choice (edge middleware + Upstash/Vercel KV, or similar). AWAITING user greenlight on the mechanism.
+- [proposed]    C2 :: Security headers - add HSTS + Permissions-Policy + CSP in next.config.ts. CSP can break the live site (GSAP/framer/Supabase/inline styles); ship report-only first, then enforce. Prod-risky - AWAITING greenlight.
+- [proposed]    C3 :: Dependency hardening - pin next-auth off the moving ^5.0.0-beta.30 and plan the stable-v5 upgrade. Touches the live admin auth gate - AWAITING greenlight.
 <!-- PHASE-BOARD-END -->
 
 ### Wave index
 | Wave | Directive (the human's words) | Narrative file |
 |---|---|---|
 | A | "perform a research phase(s) where you can analyze the whole project thoroughly and identify improvements you can make throughout, and then i want you to begin on the implementation phase(s)" - plus "implement it [the harness blueprint] into this project and start up the automation harness ... ill be excited to see how well you do, and where/when the harness breaks in this completely new stack" (2026-08-19) | docs/phases/wave-a.md |
+| B | (same directive - the pre-greenlit implementation half: safe, dev-verifiable code fixes from the A2 recon) | docs/phases/wave-b.md |
+| C | (same directive - the deferred half: prod-infra / live-path-risk / dependency items that need an explicit design greenlight) | docs/phases/wave-c.md |
 
 ## Standing constraints
 
@@ -82,6 +93,22 @@
   source project never hit it because PS-authored files carry BOMs. Convention adopted: PHASELOG
   stays ASCII-only. A deeper fix (add -Encoding UTF8 to every hook read) is a possible upstream
   improvement.
+- (o) HARNESS (port adaptation, 2026-08-19): the 45% critical-mass "defer heavy work" rule assumes
+  a CHEAP self-reset (the injector types /compact). On a stack where that channel is blocked (ledger
+  m/n), deferring buys only an idle slow-climb, not a reset - so the adapted rule is: use the
+  headroom to the built-in reset (~380k) for BOUNDED, checkpointed progress, and split before the
+  ceiling. First applied at 81.6% to launch A2's recon fan-out via subagents (which run in their own
+  windows, so orchestrator growth is just their bounded returns). This is arguably an IMPROVEMENT to
+  fold back upstream: "bounded-progress-to-headroom" is safe whenever the unit of work fits and
+  checkpoints durably, self-compaction or not.
+- (n) HARNESS (the loop's ceiling on this stack, measured 2026-08-19 03:45): the autonomous loop
+  can CONTINUE (cron re-invokes through the host) but cannot RESET CONTEXT on its own, because the
+  only mechanism that types /compact is the classifier-blocked injector. So at high context (hit
+  79.6% after the install wave) the loop correctly parks per its own guard and waits for an external
+  reset (user /compact or the SDK's built-in summarisation). Consequence: unattended, it slow-climbs
+  on cron fires until the built-in auto-compact (~380k/95%) resets it, THEN advances - functional
+  but not the clean self-compaction the Unreal install had. A real fix would be a non-paste compaction
+  trigger (e.g. if the host ever exposes a programmatic /compact, or a hook that can request one).
 - (m) HARNESS (THE headline break in this stack): the injection channel is the platform-bound part
   (BLUEPRINT s10) and it meets a NEW obstacle here - the permission classifier. It blocked, from MY
   tool calls: launching an armed phase-stop.ps1, and even a read-only Win32 EnumWindows probe. So I
@@ -112,10 +139,32 @@ limits), and repo hygiene (types, dead code, deps). A2 decides from evidence, no
 > file paths, next steps. Handles (task IDs, PIDs, output paths) go in .claude/.inflight, and the
 > stamp POINTS at them. Refresh this stamp in the same action that launches any hours-long job.
 
-*Stamp 2026-08-19 ~03:14: **A1b CLOSED** (and A1 before it). The whole harness install + verification
-wave-front is done and committed (9cdf897). Board now: A1 + A1b complete, A2 pending (the research
-pass). Full evidence in docs/phases/wave-a.md under the A1 and A1b headings. What the next context
+*Stamp 2026-08-19 ~04:00: **A2 CLOSED** (research pass done). All 4 recon agents returned; 43
+findings merged into wave-a.md (A2 headings) and synthesized into board rows B1-B6 [pending,
+pre-greenlit] + C1-C3 [proposed, await user greenlight]. .inflight is clear. What the next context
 cannot re-derive:*
+
+- *NEXT WORK is B1 (admin resilience) then B2..B6 in order - all pre-greenlit, pure-code,
+  dev-verifiable. C1-C3 are [proposed] and must NOT be started without the user's explicit
+  greenlight (infra/live-path/dependency risk). Each B row on the board carries its own file:line
+  targets + DoD - start cold from the row.*
+- *CONTEXT was ~82% (330k+) at this close - a RESET SHOULD PRECEDE B1's implementation work (edit
+  files + check.ps1 + build.ps1 + browser verify wants headroom). Per ledger o, do not start heavy
+  editing above ~45%. On this stack the reset is the SDK built-in (~380k) or a user /compact - the
+  harness can't self-compact (ledger m/n). The floor cron will re-wake to continue B1 after a reset.*
+- *Two correctness HIGHs to fix early (B2, B3): HoneycombGallery single-imgRef bug (lightbox zoom
+  binds wrong element); send-booking-email swallows Resend {error} (studio alert w/ consent PDF +
+  photo ID silently "succeeds"). Plus a security HIGH (B4): unbounded public booking upload. RLS is
+  off + service-role only, so B4 input validation is the ONLY guard (ledger a).*
+- *Per-phase loop for B: read the file(s) -> edit -> scripts/harness/check.ps1 (eslint must reach 0
+  by B5) -> scripts/harness/build.ps1 -> browser-verify in dev -> update board+wave-b.md+stamp ->
+  local commit (NEVER push). Create docs/phases/wave-b.md at B1 start.*
+- *Known-broken (do NOT attempt): harness-driven /compact + live injector paste (ledger j/m). Below,
+  the durable prior (harness-install) handoff:*
+
+*(prior close context, still current:) **A1b CLOSED** (and A1). Harness install + verification
+done, committed 9cdf897 + 08ea52a. Board: A1 + A1b complete, A2 pending. Evidence in
+docs/phases/wave-a.md under the A1 and A1b headings. What the next context cannot re-derive:*
 
 - *Window = 400k MEASURED (auto-compact at 380,519 tok, transcript b2d5b0f4). Context was ~81% when
   this wave-front closed - a reset (built-in auto-compact, or a user /compact) SHOULD happen before
