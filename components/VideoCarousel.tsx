@@ -90,7 +90,6 @@ export default function VideoCarousel({ items }: { items: Video[] }) {
           {/* featured — all videos stay mounted, only the active one is visible */}
           <div className="flex-1 max-w-3xl aspect-video sm:aspect-[16/10] rounded-2xl overflow-hidden bg-black shadow-[0_25px_60px_rgba(0,0,0,0.25)] relative">
             {items.map((it, i) => (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
               <video
                 key={it.id}
                 ref={(el) => {

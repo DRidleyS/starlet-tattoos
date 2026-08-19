@@ -454,16 +454,12 @@ const SignaturePadCanvas = React.forwardRef<
     });
     padRef.current = pad;
 
-    // Some browsers/devices are flaky with signature-pad's onEnd; keep it,
-    // but also provide an explicit Save button.
-    (pad as any).onEnd = () => save();
+    // Save whenever a stroke ends (signature_pad v5 event API); the explicit
+    // Save/Next button remains as a fallback for flaky touch devices.
+    pad.addEventListener("endStroke", () => save());
 
     if (value) {
-      try {
-        (pad as any).fromDataURL?.(value);
-      } catch {
-        // ignore
-      }
+      pad.fromDataURL(value).catch(() => {});
     }
 
     const onResize = () => {
@@ -471,11 +467,7 @@ const SignaturePadCanvas = React.forwardRef<
       resizeCanvasToDisplaySize(canvas);
       pad.clear();
       if (saved) {
-        try {
-          (pad as any).fromDataURL?.(saved);
-        } catch {
-          // ignore
-        }
+        pad.fromDataURL(saved).catch(() => {});
       }
     };
 
@@ -755,9 +747,9 @@ export default function BookingFunnel() {
       } catch {
         // ignore
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const message =
-        err?.message || "There was an error sending your request.";
+        err instanceof Error ? err.message : "There was an error sending your request.";
       setSubmitError(message);
       setSubmitSuccess(false);
       setSubmitSuccessMessage(null);
@@ -880,10 +872,8 @@ export default function BookingFunnel() {
         {
           width: "var(--navSize)",
           height: "var(--navSize)",
-          ...(variant === "accent"
-            ? ({ ["--accent" as any]: ACCENT } as any)
-            : null),
-        } as any
+          ...(variant === "accent" ? { "--accent": ACCENT } : null),
+        } as React.CSSProperties
       }
     >
       {children}
@@ -941,11 +931,13 @@ export default function BookingFunnel() {
   return (
     <div
       className="w-full min-h-screen flex items-center justify-center"
-      style={{
-        // Scales the pill + circles together.
-        // Tune once here instead of chasing multiple sizes.
-        ["--navSize" as any]: "clamp(56px, 6.5vw, 76px)",
-      }}
+      style={
+        {
+          // Scales the pill + circles together.
+          // Tune once here instead of chasing multiple sizes.
+          "--navSize": "clamp(56px, 6.5vw, 76px)",
+        } as React.CSSProperties
+      }
     >
       <div className="mx-auto w-full max-w-6xl px-4 py-12">
         <div className="min-h-[76vh] flex flex-col items-center justify-center">
@@ -970,18 +962,16 @@ export default function BookingFunnel() {
             <div className="relative w-full max-w-4xl">
               <div
                 className="w-full rounded-full border border-black/15 bg-white shadow-[0_12px_28px_rgba(0,0,0,0.08)]"
-                style={{ height: "var(--navSize)" } as any}
+                style={{ height: "var(--navSize)" }}
               >
                 <div
                   className="flex items-center w-full"
-                  style={
-                    {
-                      height: "var(--navSize)",
-                      // "Tabbed in" so typed text never collides with the back circle.
-                      paddingLeft: "calc(var(--navSize) + 12px)",
-                      paddingRight: "calc(var(--navSize) + 12px)",
-                    } as any
-                  }
+                  style={{
+                    height: "var(--navSize)",
+                    // "Tabbed in" so typed text never collides with the back circle.
+                    paddingLeft: "calc(var(--navSize) + 12px)",
+                    paddingRight: "calc(var(--navSize) + 12px)",
+                  }}
                 >
                   {current.id === "fullName" && (
                     <input

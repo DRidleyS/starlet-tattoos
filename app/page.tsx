@@ -162,6 +162,10 @@ export default function Home() {
     } catch {
       // ignore
     }
+    // localStorage is unavailable during SSR, so age-gate visibility can only be
+    // resolved after mount — this single post-mount setState is intentional and
+    // cannot move to a useState initializer without a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAgeGateOpen(true);
   }, []);
 
