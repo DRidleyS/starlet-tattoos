@@ -39,3 +39,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# phase harness — volatile machine-local state (hooks + PHASELOG are committed; state is not)
+.claude/.harness_on
+.claude/.completed_seen
+.claude/.inflight
+.claude/.busy
+.claude/.busy_state
+.claude/.busywatch.lock
+.claude/.injector.lock
+.claude/.nudge_line
+.claude/.nudge_state
+.claude/.notes_gap_state
+.claude/.notes_hash_at_compact
+.claude/.last_compacted_phase
+.claude/.last_recon_board
+.claude/.compaction_done
+.claude/.harness_ui.geometry
+.claude/*.log
+.claude/joblogs/
+.claude/PRECOMPACT-STATE.md
+.claude/settings.local.json

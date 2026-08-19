@@ -141,3 +141,87 @@ NEXTAUTH_URL
 **Other**
 - `middleware.ts` — `/admin/*` auth guard
 - `next.config.ts` — security headers
+
+# Autonomous phase loop (the harness contract)
+
+> This project runs the phase-loop harness ported from D:\claude-phase-harness (2026-08-19). The
+> hooks in .claude/hooks/ are one half of the system; this section is the agent's half.
+> BLUEPRINT.md §7 on the D: drive explains each rule's origin. The master switch is the heartbeat
+> written by Tools/harness_ui.ps1 — no UI, no harness.
+
+## RULE ZERO — ARM A CLOCK YOU OWN
+
+**Every turn that does not end the wave schedules its own one-shot wake-up before it ends** — a
+named job, never a bare check-in: pair the newest NUDGE/FIRE in `.claude/hook-stop.log` against an
+`=== injector start ===` in `.claude/hook-injector.log` within 120 s, reap dead
+`.inflight`/`.busy` markers, then continue the board. Pace the delay to what the turn waits on
+(a backgrounded build gets its expected duration +15%; an idle board gets 20–30 min). Schedule
+UNCONDITIONALLY — never gate it on your own judgment of whether the harness will fire.
+A **recurring floor** (every 30 min, off-minute, e.g. `11,41 * * * *`) stays armed underneath,
+because a chain of one-shots is as strong as its weakest link. Steady state: **one floor + at
+most one live one-shot.** A one-shot only auto-deletes when it FIRES and wakes fire only while
+idle — so delete the wake you supersede in the SAME action that arms its replacement or reaps
+its job. Delete the floor only when the wave is finished and awaiting a human greenlight — a
+finished wave gets no timer. All scheduled wakes die on a session restart: after any restart,
+read the session-start hook's output and re-arm before doing anything else.
+
+## The loop rules
+
+- **`docs/PHASELOG.md` is the state file.** Board rows, the ONE circle-back ledger (updated in
+  place, never forked), upcoming phases, and preservation notes live there; wave NARRATIVE lives
+  in `docs/phases/wave-XX.md`, one file per wave. Update at EVERY phase close, BEFORE the phase
+  is considered done. Read it FIRST after any compaction or session start.
+- **Preservation notes are machine-checked.** A phase close writes the literal token
+  `<ID> CLOSED` in the notes section plus a heading starting with the ID in the wave file; a
+  mid-phase split writes `<ID> IN FLIGHT`. The harness REFUSES to compact without the token —
+  and refuses notes a previous compaction already consumed (the section must have changed since
+  the last compaction). Never write a real phase ID next to those words as an example.
+- **45% context mid-phase is CRITICAL MASS** — an order to prepare a compaction, not a
+  compaction: write notes with the IN FLIGHT token, SPLIT the board (close the finished part,
+  add the remainder as a real pending row), confirm `.claude/.inflight`, then end the turn. The
+  harness compacts on the next stop. (Window here: 400k measured, so 45% ≈ 180k tokens.)
+- **NEVER end a turn with background work in flight without a line in `.claude/.inflight`:**
+  `<ISO ts> | <kind> | <id> | <what> | <output path>`. The summarizer preserves what looks
+  important and cannot know a run ID is the only unrecoverable thing on the page — declare the
+  HANDLE, not the summary. Delete the line in the same action that reads the job's result.
+- **A long job in flight means END THE TURN. DO NOT POLL.** Declare it, write the busy marker
+  with your PID (`Write-HarnessBusy -Reason <text> -OwnerPid <pid>`), say in one line that you
+  are waiting, and stop — the completion notification IS the wake signal. Refresh the
+  preservation stamp in the SAME pre-job action. If something wakes you while the job is alive
+  and fresh, that wake was a harness defect, not a request — end the turn again.
+- **NEVER end a turn on an intention.** A turn may only end when (a) a background job will
+  re-invoke you, (b) a decision is genuinely the human's, or (c) the wave is finished. Narrating
+  the next step and stopping is a hang by construction.
+- **When the wave is done: STOP.** Board + ledger + notes updated, floor deleted, report given —
+  then wait for the human.
+
+## Definition of done (per phase)
+
+Typecheck + lint green by their RESULT line (`scripts/harness/check.ps1`) → production build green
+by its RESULT line (`scripts/harness/build.ps1`) → the change verified in the browser (preview the
+dev server, screenshot/read the page, check the console — not by reading the code that should
+produce it) → docs/PHASELOG.md updated (board row, ledger, notes token) + wave-file narrative →
+local commit with explicit staging.
+
+## Verification laws
+
+- **The RESULT line is the verdict, never the exit code.** Every wrapper logs
+  `RESULT: OK key=value...` or `RESULT: FAIL ...`; a MISSING line is a FAIL.
+- **Dry-by-default:** mutating tools run as a census unless an explicit apply flag is passed;
+  the dry list is archived before any apply.
+- **See → act → check → fix:** verify every change in the browser the visitors use.
+- **Watch a fence fail before trusting it** — test new gates in the failing direction.
+- **Identify the asset before theorizing;** read the thing itself, never a run's self-report.
+
+## Long-running jobs in this project
+
+- production build: `scripts/harness/build.ps1`, ~60–120 s, `RESULT: OK exit=0 buildId=...` —
+  REFUSES while a dev server holds port 3000–3010 (stop the preview first).
+- typecheck+lint: `scripts/harness/check.ps1`, ~30–90 s, `RESULT: OK tsc=0 eslint=0`.
+- The dev server (`next dev`, usually via the Browser pane preview) is the NORMAL WORKING STATE,
+  never a busy signal — same law as the Unreal editor exclusion in the source project.
+- Anything expected to run >2 min: background it, declare it in `.claude/.inflight`, write the
+  busy marker, END THE TURN. Jobs under ~2 min run foreground through their wrapper.
+- $HarnessBusyProcs is EMPTY on this stack (node is too generic); the PID-owned `.busy` marker
+  written by the wrappers is the only busy signal. Add unmistakable names (e.g. playwright) if
+  the stack grows them.
