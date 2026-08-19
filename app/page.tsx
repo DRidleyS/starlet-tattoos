@@ -54,7 +54,13 @@ function AgeGateModal({
 
   useEffect(() => {
     if (!open) return;
-    const t = window.setTimeout(() => yesRef.current?.focus(), 0);
+    // preventScroll matters on mobile: moving focus into the dialog otherwise
+    // asks the browser to scroll the button into view, which can shift the page
+    // behind the overlay before the visitor has seen the top of it.
+    const t = window.setTimeout(
+      () => yesRef.current?.focus({ preventScroll: true }),
+      0
+    );
     return () => window.clearTimeout(t);
   }, [open]);
 
@@ -177,6 +183,53 @@ export default function Home() {
       document.body.style.overflow = prev;
     };
   }, [ageGateOpen]);
+
+  /**
+   * Start the homepage at the top on a fresh load.
+   *
+   * On mobile a first-time visitor could land partway down the page, past the
+   * header animation with the video carousel already in view. Several things
+   * push it there and they are hard to separate on a real device: the browser
+   * restoring a previous scroll offset, the `min-h-svh` hero resizing as the
+   * URL bar collapses, and lazily-loaded gallery images and videos reflowing
+   * the document after first paint. Rather than bet on one of them, the top is
+   * simply re-asserted across the window in which those settle.
+   *
+   * Two deliberate limits: back/forward navigation is left alone so returning
+   * to the page keeps your place, and the moment the visitor scrolls, touches
+   * or types, this stops — it must never fight someone who is already reading.
+   */
+  useEffect(() => {
+    const [nav] = performance.getEntriesByType(
+      "navigation"
+    ) as PerformanceNavigationTiming[];
+    if (nav?.type === "back_forward") return;
+
+    let released = false;
+    const pinTop = () => {
+      if (!released) window.scrollTo(0, 0);
+    };
+    const release = () => {
+      released = true;
+    };
+
+    pinTop();
+
+    const opts = { passive: true, once: true } as const;
+    window.addEventListener("wheel", release, opts);
+    window.addEventListener("touchstart", release, opts);
+    window.addEventListener("keydown", release, { once: true });
+
+    const timers = [50, 250, 600].map((ms) => window.setTimeout(pinTop, ms));
+
+    return () => {
+      released = true;
+      timers.forEach((t) => window.clearTimeout(t));
+      window.removeEventListener("wheel", release);
+      window.removeEventListener("touchstart", release);
+      window.removeEventListener("keydown", release);
+    };
+  }, []);
 
   const acceptAge = () => {
     try {
