@@ -19,7 +19,6 @@
 - [pending]     B4 :: [AWAITING USER DECISION - verification approach, ledger q] API input validation + error hygiene (contains the security HIGH). app/api/bookings/route.ts:44 cap size/MIME/count + sharp re-encode uploads; app/api/gallery/route.ts try/catch + size cap + category whitelist + generic errors; status enum + notes cap (bookings/[id]); reorder id-validation + partial-failure checks; storage-remove result checks; videos url validation. RLS is off so this is the only guard. Can't browser-verify locally (no Supabase env). DoD: check.ps1 + build green + routes reviewed.
 - [complete]    B6 :: SEO metadata + media perf DONE (commit 413670e, VERIFIED in dev): layout.tsx metadataBase+OpenGraph+Twitter+title template, booking-page metadata, FlashGallery p-40 -> responsive (no 375px horizontal overflow, verified), VideoCarousel inactive/peek videos preload=metadata (build-verified only - no local video data). Deferred: Vine resize-debounce (animation-internals, modest payoff; + its exhaustive-deps warnings). Narrative: wave-b.md.
 - [complete]    B5 :: Lint-clean DONE (commit 6693252, VERIFIED check.ps1 RESULT OK tsc=0 eslint=0). All 14 no-explicit-any gone (CSS-var->React.CSSProperties, signature_pad v5 API, EventListener casts, catch:unknown) + the page.tsx set-state-in-effect error (justified disable) + stale VideoCarousel directive. Funnel renders, --navSize resolves (verified). NOT done (were listed but are lower-value/riskier): Supabase Database generic (needs typegen or careful hand-typing) and the ~19 remaining exhaustive-deps WARNINGS (don't fail the gate; some are real refactors). Left as ledger item. Narrative: wave-b.md.
-- [pending]     B6 :: SEO metadata + media perf. app/layout.tsx openGraph/twitter/metadataBase; app/booking/page.tsx metadata (+ noindex decision); components/VideoCarousel.tsx preload=metadata; VineTopFrame.tsx/VineMainDivider.tsx resize-restart debounce; FlashGallery.tsx mobile padding overflow. DoD: link-preview meta present, no homepage horizontal scroll at 375px, verified in browser.
 - [proposed]    C1 :: Abuse & brute-force protection (rate-limit public bookings + healed-photos POST; admin-login lockout). Serverless has no shared memory - needs an infra choice (edge middleware + Upstash/Vercel KV, or similar). AWAITING user greenlight on the mechanism.
 - [proposed]    C2 :: Security headers - add HSTS + Permissions-Policy + CSP in next.config.ts. CSP can break the live site (GSAP/framer/Supabase/inline styles); ship report-only first, then enforce. Prod-risky - AWAITING greenlight.
 - [proposed]    C3 :: Dependency hardening - pin next-auth off the moving ^5.0.0-beta.30 and plan the stable-v5 upgrade. Touches the live admin auth gate - AWAITING greenlight.
@@ -72,9 +71,27 @@
 - (e) Legacy NEXT_PUBLIC_EMAILJS_* env vars in Vercel are unused cruft (dashboard cleanup, user).
 - (f) NEXT_PUBLIC_SUPABASE_ANON_KEY exists in Vercel but nothing in the code uses it (strengthens
   the RLS case; harmless otherwise).
-- (g) HARNESS: hooks were wired mid-session on 2026-08-19; whether this client registers
-  mid-session hook edits is UNVERIFIED - check .claude/hook-stop.log for a line at the first
-  turn end. If empty, hooks arm at the next session start.
+- (g) HARNESS - ANSWERED 2026-08-19 ~06:45 (user observation, log-verified): hooks wired
+  mid-session NEVER LOAD in this client. Evidence: UI armed (heartbeat alive) across 10+ real turn
+  ends after 03:07, and hook-stop.log contains ONLY the 3 manual rig lines from 03:02-03:06 - a
+  live Stop hook logs SOMETHING at every stop, so zero lines = zero firings. Ergo THIS SESSION the
+  hook+injector machinery did literally nothing autonomous: no nudges, no pastes, no compactions -
+  context grew monotonically ~200k -> ~560k, exactly the balloon the harness exists to prevent. The
+  only autonomous drivers were the CronCreate floor (RULE ZERO, agent-contract half - a native
+  scheduled prompt, not the PS machinery) and subagent task notifications. THE HOOK HALF REMAINS
+  UNTESTED, NOT DEAD: it can only load at a session start. One restart with the UI armed is the
+  whole test: SessionStart output appearing in the fresh context proves liveness instantly, and the
+  first turn end shows phase-stop lines + the injector's first real raise/paste attempt.
+  **RESOLVED 2026-08-19 11:50 - THE HARNESS WORKS END-TO-END.** After the session restart: (1)
+  SessionStart:resume hook fired and injected the board brief; (2) the Stop hook fired autonomously
+  (11:41:40 - first ever) and correctly stayed silent because [proposed] rows gate nudges (a real
+  discovery: the proposed-check precedes the pending-check, so a board with any proposed row parks
+  the loop - by design); (3) with the proposed rows temporarily lifted, the Stop hook nudged
+  (11:50:12) and the injector delivered (11:50:13-22): LineFile channel carried the 224-char line,
+  Raise-Claude MATCHED the window (foreground=[Claude] class=[Chrome_WidgetWin_1] - the big unknown,
+  now confirmed), paste landed, Enter submitted, and the nudge arrived as a real turn. Every link in
+  ledger m proven live. The ONLY reason it "never did anything" all prior session: hooks wired
+  mid-session never load - they need a session start, which this session finally had.
 - (h) HARNESS: the EXFIL install and this one share the machine AND the 'Claude' window title the
   injector targets. Two harness UIs armed at once could cross-inject nudges into the wrong
   session. Operate ONE project's harness at a time.
