@@ -93,6 +93,7 @@ export default function FlashGallery({ items }: { items: Item[] }) {
                     onClick={() => setSelected(idx)}
                     role="button"
                     tabIndex={0}
+                    aria-label={`View flash design ${idx + 1}`}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
@@ -103,8 +104,10 @@ export default function FlashGallery({ items }: { items: Item[] }) {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={it.paper}
-                      alt={`flash-${idx}`}
+                      alt={`Flash tattoo design ${idx + 1}`}
                       className="absolute inset-0 w-full h-full object-contain"
+                      loading="lazy"
+                      decoding="async"
                     />
                   </div>
 
@@ -188,8 +191,9 @@ export default function FlashGallery({ items }: { items: Item[] }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={items[selected].paper}
-            alt={`flash-${selected}`}
+            alt={`Flash tattoo design ${selected + 1}`}
             className="fg-img"
+            decoding="async"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
