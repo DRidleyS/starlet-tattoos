@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { createServerClient } from "@/lib/supabase-server";
 import { sendHealedPhotosEmail } from "@/lib/send-booking-email";
+import { clientIp, hit, tooManyRequests } from "@/lib/rate-limit";
 
 // Image re-encoding needs the Node.js runtime (sharp).
 export const runtime = "nodejs";
+
+// The per-booking caps below already bound total storage; this bounds the RATE,
+// so a leaked or shared follow-up link cannot be replayed to spray the studio
+// inbox with notification emails. Generous enough for a client uploading in
+// several goes from a phone.
+const HEALED_UPLOADS_PER_HOUR = 10;
+const HOUR_MS = 60 * 60 * 1000;
 
 const MAX_PHOTOS_PER_SUBMISSION = 6;
 const MAX_PHOTOS_PER_BOOKING = 12;
@@ -22,6 +30,18 @@ const UUID_RE =
  */
 export async function POST(req: NextRequest) {
   try {
+    const limit = hit(
+      `healed:${clientIp(req)}`,
+      HEALED_UPLOADS_PER_HOUR,
+      HOUR_MS
+    );
+    if (!limit.allowed) {
+      return tooManyRequests(
+        "Too many uploads from this connection. Please wait a few minutes and try again.",
+        limit.retryAfterSec
+      );
+    }
+
     const form = await req.formData();
     const bookingId = (form.get("bookingId") as string | null)?.trim() ?? "";
     const message = ((form.get("message") as string | null) ?? "").slice(

@@ -3,12 +3,33 @@ import { createServerClient } from "@/lib/supabase-server";
 import { generateConsentForm } from "@/lib/generate-consent-form";
 import { sendBookingEmail } from "@/lib/send-booking-email";
 import { sendPreAppointmentEmail } from "@/lib/send-client-emails";
+import { clientIp, hit, tooManyRequests } from "@/lib/rate-limit";
 
 // PDF + image generation depend on the Node.js runtime (sharp / pdf-lib).
 export const runtime = "nodejs";
 
+// A real client submits this form once. Five per hour leaves generous room for a
+// retry after a failed upload while capping the cost of an abusive caller — every
+// submission writes to storage, renders a PDF, and sends two emails.
+const BOOKINGS_PER_HOUR = 5;
+const HOUR_MS = 60 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
   try {
+    // Checked before the body is read: refusing early is the whole point, since
+    // parsing the multipart upload is itself the expensive part.
+    const limit = hit(
+      `bookings:${clientIp(req)}`,
+      BOOKINGS_PER_HOUR,
+      HOUR_MS
+    );
+    if (!limit.allowed) {
+      return tooManyRequests(
+        "Too many booking requests from this connection. Please wait a few minutes and try again.",
+        limit.retryAfterSec
+      );
+    }
+
     const form = await req.formData();
 
     const fullName = form.get("fullName") as string;
